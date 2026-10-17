@@ -66,20 +66,23 @@ async function plan(R, c, now) {
 }
 
 // ---------------------------------------------------------------- the weather for one day
-const fcMemo = new Map();
+const fcMemo = new Map(); // course and span → { at, p, fetched }: one read per 30 minutes, and the read's own fetch time kept with it
 async function forecastDay(R, d, sport, now) {
   const lg = WL.legs(d.pts); if (!lg.length) return null;
   const tm = WL.timing(lg, new Date(d.startMs).toISOString(), d.kmh, d.stops, sport === 'run' ? 'run' : 'ride'), sp = WL.span(tm, now), key = lg.length + '|' + lg[0].lat + ',' + lg[0].lon + '|' + sp.from + sp.to;
-  let fetched = null;
-  const p = fcMemo.get(key) && now - fcMemo.get(key).at < 30 * 6e4 ? fcMemo.get(key).p : WL.fetchModel(async (q) => {
-    const r = await fetch(R.H.forecast + '?' + q, { headers: { Accept: 'application/json' }, cf: { cacheTtl: 300, cacheEverything: true } });
-    const f = r.headers.get('x-windline-fetched'); if (r.ok && f) fetched = Date.parse(f);
-    let body = null; try { body = await r.json(); } catch (e) { body = null; } return { ok: r.ok, status: r.status, body };
-  }, lg, WL.MODELS[0], sp);
-  fcMemo.set(key, { at: now, p }); if (fcMemo.size > 100) fcMemo.clear();
-  let series; try { series = await p; } catch (e) { fcMemo.delete(key); return null; }
+  let e = fcMemo.get(key);
+  if (!e || now - e.at > 30 * 6e4) {
+    const x = { at: now, fetched: null }; e = x;
+    x.p = WL.fetchModel(async (q) => {
+      const r = await fetch(R.H.forecast + '?' + q, { headers: { Accept: 'application/json' }, cf: { cacheTtl: 300, cacheEverything: true } });
+      const f = r.headers.get('x-windline-fetched'); if (r.ok && f) { const t = Date.parse(f); if (isFinite(t) && (!x.fetched || t < x.fetched)) x.fetched = t; } // the oldest part's time
+      let body = null; try { body = await r.json(); } catch (err) { body = null; } return { ok: r.ok, status: r.status, body };
+    }, lg, WL.MODELS[0], sp);
+    if (fcMemo.size > 100) fcMemo.clear(); fcMemo.set(key, x);
+  }
+  let series; try { series = await e.p; } catch (err) { if (fcMemo.get(key) === e) fcMemo.delete(key); return null; }
   const a = WL.analyze(lg, tm, { series: { apple: series }, models: ['apple'] }, 'apple');
-  return a ? { a, lg, tm, source: 'apple', fetched } : null;
+  return a ? { a, lg, tm, source: 'apple', fetched: e.fetched || null } : null;
 }
 async function historicDay(d, sport) {
   const lg = WL.legs(d.pts); if (!lg.length) return null;
@@ -130,12 +133,14 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
     return { d, w, v: w ? WL.verdictOf(w.a, w.source, f.U) : null };
   }));
   const ok = days.filter((x) => x.w), hist = ok.some((x) => x.w.source === 'historic'), fcst = ok.some((x) => x.w.source === 'apple');
+  const ages = ok.map((x) => x.w.fetched).filter((t) => isFinite(t) && t > 0), fetchedAt = ages.length ? Math.min(...ages) : null; // the oldest forecast read shown
+  const age = fetchedAt ? 'Forecast updated ' + Math.max(1, Math.round((now - fetchedAt) / 6e4)) + ' min ago' : null;
   if (!ok.length) return { text: `I couldn't get the weather for ${P.name} just now. Try again in a moment.\n\n` + sponsorLine, structured: { view: 'none' }, map: null };
 
   const label = hist && !fcst ? 'Based on 10 years of weather on this date (Copernicus ERA5, 2015–2024), not a forecast.' : fcst && !hist ? 'Forecast from Apple Weather, timed to the course.' : 'The forecast for the days inside 10 days; 10 years of weather on this date for the rest.';
   const lines = [], first = ok[0], d0 = first.d, startLocal = clock(d0.startMs, P.tz, f);
   lines.push(`${P.name}${P.demo ? '' : ''}: ${longDate(new Date(d0.startMs).toLocaleDateString('en-CA', { timeZone: P.tz }))}${P.days.length > 1 ? ` to ${longDate(new Date(P.days[P.days.length - 1].startMs).toLocaleDateString('en-CA', { timeZone: P.tz }))}, ${P.days.length} days` : `, start ${startLocal}`}. ${label}`);
-  const S = { view: 'event_weather', event: P.name, sport: sport === 'run' ? 'running' : 'cycling', basis: hist && !fcst ? 'historic' : fcst && !hist ? 'forecast' : 'mixed', timed_for: P.timedFor, url: P.url, units: f.system, days: [] };
+  const S = { view: 'event_weather', event: P.name, sport: sport === 'run' ? 'running' : 'cycling', basis: hist && !fcst ? 'historic' : fcst && !hist ? 'forecast' : 'mixed', timed_for: P.timedFor, url: P.url, units: f.system, forecast_updated: fetchedAt ? new Date(fetchedAt).toISOString() : null, days: [] };
   ok.forEach(({ d, w, v }) => {
     const a = w.a, segs = a.segs, t0 = segs[0].w.temp, t1 = segs[segs.length - 1].w.temp, multi = P.days.length > 1;
     let s = multi ? `${d.name} (${longDate(new Date(d.startMs).toLocaleDateString('en-CA', { timeZone: P.tz })).replace(/ \d{4}$/, '')}): ` : '';
@@ -153,6 +158,7 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
   });
   if (P.extraLines) P.extraLines.forEach((l) => lines.push(l));
   lines.push(`Timed for ${P.timedFor}.`);
+  if (age) lines.push(age + '.');
   if (hist) lines.push('Weather records: Copernicus ERA5 (contains modified Copernicus Climate Change Service information).');
   lines.push(`\nMore: ${P.url}`);
   const text = lines.join(' ').replace(/ \nMore:/, '\nMore:') + '\n\n' + sponsorLine;
@@ -175,7 +181,7 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
     aheadTitle: 'Day by day', why: v0.why || v0.plus || null,
     legs: (() => { const L = []; let t = 0; ok.forEach((x, i) => { x.w.a.segs.forEach((g) => L.push([+((t + g.s.fromKm) / all).toFixed(4), +((t + g.s.toKm) / all).toFixed(4), (sport === 'run' ? ({ ideal: 'Ideal', slower: 'A little slower', hard: 'Hard', veryhard: 'Very hard' })[g.hard] || '' : g.effect === 'head' ? 'Headwind ' + f.speedShort(g.head) : g.effect === 'tail' ? 'Tailwind ' + f.speedShort(-g.head) : g.effect === 'calm' ? 'Calm' : 'Side-on ' + f.speedShort(g.w.speed)) + ' · ' + f.degShort(g.w.temp), colourOf(g, sport), f.atShort((t + g.s.fromKm) * ((x.d.km || per[i]) / per[i]))])); t += per[i]; }); return L; })(),
     follow: { url: P.url, label: /livedot\.me/.test(P.url) ? 'Open on livedot' : 'Open the event' },
-    updated: hist && !fcst ? 'Copernicus ERA5, 2015–2024 · ' + P.timedFor : (first.w.fetched ? 'Forecast updated ' + Math.max(1, Math.round((now - first.w.fetched) / 6e4)) + ' min ago · ' : '') + 'Apple Weather',
+    updated: hist && !fcst ? 'Copernicus ERA5, 2015–2024 · ' + P.timedFor : (age ? age + ' · ' : '') + 'Apple Weather',
     sponsor: sponsorLine, units: f.system,
   };
   return { text, structured: S, map };

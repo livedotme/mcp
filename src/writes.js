@@ -4,6 +4,7 @@
 // which hands a RunFast account's to runfast.tech), with the person's token. handoffs/2026-10-17-mcp-oauth-contract.md (Windline repo).
 import tzlookup from './gen/tzlookup.js';
 import { eventWeather } from './eventweather.js';
+import { clock } from './words.js';
 
 export const RESOURCE_META = 'https://livedot.me/.well-known/oauth-protected-resource/mcp';
 export const SCOPE = { list_my_events: 'events.read', create_event: 'events.write', update_event: 'events.write', add_tour_notes: 'events.write', publish_event: 'events.publish', post_club_ride: 'clubs.post' };
@@ -168,6 +169,45 @@ async function daysOf(ctx, a) {
 }
 const withSponsor = (j, sponsorLine, view) => ({ text: `${j.text}\n\n${sponsorLine}`, structured: { view, app: j.app, ...(j.data || {}), sponsor_line: sponsorLine }, map: null });
 
+// ---------------------------------------------------------------- the draft's card (create_event): what was made, from the routes read here
+const DAY_COLOURS = ['#635BFF', '#1E9BD7', '#2FBF8F', '#F5A524', '#E5484D', '#8E4EC6', '#0EA5A4', '#B54708'];
+const hav = (a, b) => { const r = Math.PI / 180, x = Math.sin((b[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin((b[1] - a[1]) * r / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
+const thou = (n) => Math.round(n).toLocaleString('en-US');
+/** The widget's view of a new draft: the days with their distance, climbing and start, the whole route coloured day by day,
+ *  "Draft · Publish when you're ready" and Open in Windline (or RunFast). Every number is the route reader's and the app's answer. */
+function draftView(ctx, ev, S, sponsorLine) {
+  const { tz, days } = ev, run = ev.type === 'run', app = (S && S.app) || (run ? 'runfast' : 'windline'), f = ctx.f0(tz), imp = f.system === 'imperial';
+  const dist = (km) => `${f.num(km)} ${f.label.dist}`, climb = (m) => `${thou(imp ? m * 3.28084 : m)} ${imp ? 'ft' : 'm'}`;
+  const date = (iso, o) => { try { return new Date(iso).toLocaleDateString('en-GB', { timeZone: tz, ...o }); } catch (e) { return iso.slice(0, 10); } };
+  const multi = days.length > 1, per = Math.max(2, Math.floor(700 / days.length)), course = [], starts = [];
+  let along = 0;
+  days.forEach((d) => {
+    const pts = (d.pts || []).filter((p) => isFinite(p[0]) && isFinite(p[1])), step = Math.max(1, Math.ceil(pts.length / per));
+    const thin = pts.filter((p, i) => i % step === 0 || i === pts.length - 1).map((p) => [+(+p[0]).toFixed(5), +(+p[1]).toFixed(5)]);
+    if (course.length && thin.length) along += hav(course[course.length - 1], thin[0]);
+    starts.push(along);
+    thin.forEach((p, i) => { if (i) along += hav(thin[i - 1], p); course.push(p); });
+  });
+  const total = along || 1, colour = (i) => (multi ? DAY_COLOURS[i % DAY_COLOURS.length] : run ? '#EE7A1F' : '#635BFF');
+  const km = days.reduce((s, d) => s + (d.km || 0), 0), up = days.reduce((s, d) => s + (d.climb || 0), 0);
+  const word = run ? (ev.race ? 'Race' : 'Run') : ({ tour: 'Tour', race: 'Race', ride: 'Ride' })[ev.type] || 'Event';
+  const first = days[0], last = days[days.length - 1], note = 'Draft · Publish when you’re ready';
+  const stats = [{ k: multi ? 'First day' : 'Start', v: clock(Date.parse(first.start), tz, f), sub: ev.weekly ? 'Every week from ' + date(first.start, { day: 'numeric', month: 'short' }) : date(first.start, { day: 'numeric', month: 'short', year: 'numeric' }) }];
+  if (multi) stats.push({ k: 'Last day', v: clock(Date.parse(last.start), tz, f), sub: date(last.start, { day: 'numeric', month: 'short', year: 'numeric' }) });
+  stats.push({ k: 'Distance', v: dist(km), sub: multi ? `${days.length} days` : null }, { k: 'Climbing', v: climb(up), sub: 'up' });
+  return {
+    kind: 'draft', sport: run ? 'run' : 'ride', app, name: ev.name, race: [word, multi ? `${days.length} days` : null, dist(km)].filter(Boolean).join(' · '), status: 'draft', statusWord: 'Draft',
+    course, stops: days.map((d, i) => [+(starts[i] / total).toFixed(4), colour(i)]), progress: 0, dot: null,
+    key: multi ? days.map((d, i) => [colour(i), d.label || `Day ${i + 1}`]) : null, keyTitle: 'Day by day',
+    headline: `${dist(km)} · ${climb(up)} up`, stats,
+    ahead: days.map((d, i) => ({ k: [d.label || (multi ? `Day ${i + 1}` : ''), d.from && d.to ? `${d.from} → ${d.to}` : d.from || d.to || ''].filter(Boolean).join(' · ') || ev.name,
+      at: clock(Date.parse(d.start), tz, f), v: dist(d.km || 0), sub: `${climb(d.climb || 0)} up · ${date(d.start, { weekday: 'short', day: 'numeric', month: 'short' })}`, c: colour(i) })),
+    aheadTitle: multi ? 'Day by day' : 'The route',
+    follow: { url: (S && S.dashboard) || (app === 'runfast' ? 'https://runfast.tech' : 'https://app.windline.tech'), label: app === 'runfast' ? 'Open in RunFast' : 'Open in Windline' },
+    updated: note, sponsor: sponsorLine, units: f.system,
+  };
+}
+
 export async function writeTool(ctx, name, args, sponsorLine) {
   const a = args || {};
   if (!ctx.authorization) throw new NeedAuth(SCOPE[name]); // before reading any route: nothing is read for someone who can't write
@@ -183,7 +223,9 @@ export async function writeTool(ctx, name, args, sponsorLine) {
       kind: type === 'run' ? (a.race ? 'race' : 'run') : type === 'race' ? 'race' : undefined, date: first.date, time: first.time, weekly: weekly || undefined,
       route: { pts: days[0].pts, km: days[0].km, climb: days[0].climb }, place: a.place, pace: a.pace, club: a.club || a.page,
     };
-    return withSponsor(await tool(ctx, name, out), sponsorLine, name === 'post_club_ride' ? 'club_ride' : 'created');
+    const res = withSponsor(await tool(ctx, name, out), sponsorLine, name === 'post_club_ride' ? 'club_ride' : 'created');
+    if (name === 'create_event') res.map = draftView(ctx, { name: a.name, type, race: !!a.race, tz, days, weekly }, res.structured, sponsorLine);
+    return res;
   }
   if (name === 'update_event' || name === 'add_tour_notes' || name === 'publish_event') return withSponsor(await tool(ctx, name, { ...a, id: a.event_id }), sponsorLine, name);
   throw new Plain('Unknown tool.');

@@ -28,6 +28,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;background:transparent;color:var(--ink);font:400 15px/1.5 var(--font);-webkit-font-smoothing:antialiased}
 .num{font-variant-numeric:tabular-nums}
+.sep{font-variant-numeric:normal;font-feature-settings:"tnum" 0}/* a thousands comma: tabular figures made it a full figure wide ("1 , 336" at 12px) */
 .card{background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--sh)}
 .hd{display:flex;align-items:center;gap:12px;padding:16px 18px 14px}
 .mark{width:28px;height:28px;flex:none}
@@ -111,6 +112,21 @@ ul.rows{list-style:none;margin:0;padding:0 8px 8px;max-height:340px;overflow:aut
 (function () {
 'use strict';
 var root = document.getElementById('root'), V = null, STACK = [], seq = 0;
+// thousands separators in what's shown ("1,336"): the comma between digits in its own span, set without tabular figures
+function seps(el) {
+  if (!el || !document.createTreeWalker) return el;
+  var w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null), hit = [], n;
+  while ((n = w.nextNode())) if (/\d,\d/.test(n.nodeValue) && !(n.parentNode && n.parentNode.closest && n.parentNode.closest('svg,.sep,input,textarea'))) hit.push(n);
+  hit.forEach(function (t) {
+    var parts = t.nodeValue.split(/(\d),(?=\d)/), f = document.createDocumentFragment();
+    for (var i = 0; i < parts.length; i++) {
+      if (i % 2 === 1) { f.appendChild(document.createTextNode(parts[i])); var sp = document.createElement('span'); sp.className = 'sep'; sp.textContent = ','; f.appendChild(sp); }
+      else if (parts[i]) f.appendChild(document.createTextNode(parts[i]));
+    }
+    t.parentNode.replaceChild(f, t);
+  });
+  return el;
+}
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 var MARK = '<svg class="mark" viewBox="20 20 60 60" aria-hidden="true"><circle cx="50" cy="50" r="26" fill="none" stroke="#2FD39B" stroke-width="5" stroke-linecap="round" stroke-dasharray="128 35.4" transform="rotate(-20 50 50)" opacity=".55"/><circle cx="50" cy="50" r="13" fill="#2FD39B"/></svg>';
 var CHEV = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" class="chev"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -160,7 +176,7 @@ if (window.LD_VIEW) show(window.LD_VIEW);
 if ('ResizeObserver' in window) new ResizeObserver(function () { host.size(); }).observe(document.body);
 
 // ---------------------------------------------------------------- views
-function message(t) { root.innerHTML = '<div class="card"><div class="hd">' + MARK + '<div class="ttl"><b>livedot</b></div></div><p class="hint">' + esc(t).replace(/\n/g, '<br>') + '</p></div>'; host.size(); }
+function message(t) { root.innerHTML = '<div class="card"><div class="hd">' + MARK + '<div class="ttl"><b>livedot</b></div></div><p class="hint">' + esc(t).replace(/\n/g, '<br>') + '</p></div>'; seps(root); host.size(); }
 function show(v) {
   V = v; seq++;
   document.body.className = v.sport === 'run' || v.sport === 'running' ? 'run' : '';
@@ -185,7 +201,7 @@ function mapView(v) {
   if (v.leaders && v.leaders.length) h += '<div class="sec"><h3>Out front</h3></div><ul class="rows">' + v.leaders.map(function (l, i) { return '<li><div class="row" style="cursor:default"><span class="av num">' + (i + 1) + '</span><span class="mid"><b>' + esc(l.k) + '</b><span class="sub num">' + esc(l.v) + '</span></span></div></li>'; }).join('') + '</ul>';
   h += '<div class="ft">' + (v.fly ? '<button class="btn" type="button" data-open="' + esc(v.fly.url) + '"><i></i>' + esc(v.fly.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.fly ? ' sec2' : '') + '" type="button" data-open="' + esc(v.follow.url) + '">' + (v.fly ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta">' + esc(v.updated || '') + '</span></div>';
   h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
-  root.innerHTML = h; wire(); drawSvg(v); drawGl(v, seq); host.size();
+  root.innerHTML = h; seps(root); wire(); drawSvg(v); drawGl(v, seq); host.size();
 }
 
 function picker(v) {
@@ -193,7 +209,7 @@ function picker(v) {
   h += '<div class="find"><label class="box">' + SEARCH + '<input id="q" type="search" autocomplete="off" placeholder="Narrow by surname or initial" aria-label="Narrow by surname or initial"><kbd>Enter</kbd></label></div>';
   h += '<ul class="rows" id="rows"></ul><p class="hint" id="hint">' + (v.rows.length < 20 ? 'Tap the person you mean.' : 'The ' + v.rows.length + ' most likely. Type a surname or initial to narrow it down.') + '</p>';
   h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
-  root.innerHTML = h; rows(v.rows); wire();
+  root.innerHTML = h; seps(root); rows(v.rows); wire();
   var q = document.getElementById('q'), t = 0;
   q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { var s = q.value.trim().toLowerCase(); rows(v.rows.filter(function (r) { return !s || r.name.toLowerCase().split(/\s+/).some(function (w) { return w.indexOf(s) === 0; }); })); }, 80); });
   q.addEventListener('keydown', function (e) {
@@ -212,6 +228,7 @@ function rows(list) {
     return '<li><button class="row" type="button" data-id="' + esc(r.id) + '"><span class="av" style="background:' + (r.sport === 'running' ? 'var(--run)' : 'var(--cyc)') + '">' + esc(ini) + '</span><span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
       + (live ? '<span class="pill live"><i></i>Live</span>' : r.status ? '<span class="pill">' + esc({ paused: 'Paused', stopped: 'Stopped', finished: 'Finished', waiting: 'Not started' }[r.status] || r.status) + '</span>' : '') + CHEV + '</button></li>';
   }).join('');
+  seps(box);
   host.size();
 }
 function wire() {
@@ -313,7 +330,7 @@ function flyOver(map, gl, v) {
   var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
   function show(f) {
     var L = (v.legs || []).filter(function (l) { return f >= l[0] && f <= l[1] + 1e-6; })[0];
-    if (L && hud) hud.innerHTML = '<b class="num">' + esc(L[4]) + '</b><span><i style="background:' + esc(L[3]) + '"></i>' + esc(L[2]) + '</span>';
+    if (L && hud) { hud.innerHTML = '<b class="num">' + esc(L[4]) + '</b><span><i style="background:' + esc(L[3]) + '"></i>' + esc(L[2]) + '</span>'; seps(hud); }
   }
   function step(ts) {
     if (!playing) return; if (t0 == null) t0 = ts - done * dur;

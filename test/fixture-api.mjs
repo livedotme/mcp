@@ -136,10 +136,11 @@ function mcpStub(req, res, p, raw) {
     const pts = [...String(b.gpx || '').matchAll(/<trkpt lat="([-\d.]+)" lon="([-\d.]+)"/g)].map((m) => [+m[1], +m[2], null]);
     if (pts.length < 2) return j(400, { ok: false, error: 'That file has no route in it.' });
     let km = 0; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], c = pts[i], r = Math.PI / 180, h = Math.sin((c[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(c[0] * r) * Math.sin((c[1] - a[1]) * r / 2) ** 2; km += 12742 * Math.asin(Math.sqrt(h)); }
-    return j(200, { ok: true, routes: [{ name: 'Test loop', from: '', to: '', km: Math.round(km * 10) / 10, climb: 0, pts }] });
+    const nm = /<name>(.+?) → (.+?)<\/name>/.exec(String(b.gpx || '')), cl = /<desc>climb=(\d+)<\/desc>/.exec(String(b.gpx || ''));
+    return j(200, { ok: true, routes: [{ name: 'Test loop', from: nm ? nm[1] : '', to: nm ? nm[2] : '', km: Math.round(km * 10) / 10, climb: cl ? +cl[1] : 0, pts }] });
   }
   const m = p.match(/^\/tool\/(\w+)$/);
-  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1' } }); }
+  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1', ...(m[1] === 'create_event' ? { type: 'tour', status: 'draft', dashboard: 'https://app.windline.tech/#/e/ev1' } : {}) } }); }
   return j(404, { ok: false, error: 'Not found' });
 }
 export const MCP_SEEN = [];

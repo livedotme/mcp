@@ -17,10 +17,12 @@ Ask where someone is in a race, how it's going, or what race day will be like, a
 
 </div>
 
+<img src="docs/listing/1-follow-anyone-live-2400x1500.png" alt="Follow anyone live: asked “Where’s Megan in the Comrades?”, the assistant answers with livedot’s live map: Megan’s dot on the course, km 58 of 90, her time against her goal, the heat and wind on the road ahead, and Follow live">
+
 <table>
 <tr>
-<td width="50%"><b>“Where’s Megan in the Comrades?”</b><br><img src="docs/shots/picker-widget.png" alt="A picker in the chat: 20+ Megans in the Comrades, each with the km they're at, their pace and their goal, and a search box"></td>
-<td width="50%"><b>“The one with livedot.me/megan.”</b><br><img src="docs/shots/picker-to-map-widget.png" alt="Megan's live map: her dot on the Comrades course, coloured by how hard the heat makes each stretch, with her pace, finish time and the road ahead"></td>
+<td width="50%"><img src="docs/listing/2-weather-on-your-route-2400x1500.png" alt="Weather on your route: a GPX file attached and “What’s the weather like for this run on Saturday at 6am?”; plan_route answers with the forecast along the run at 6:00 per km, its rating, the heat stress stretch and the route coloured by how hard the weather makes it"></td>
+<td width="50%"><img src="docs/listing/3-build-a-tour-2400x1500.png" alt="Build a tour from GPX files: four GPX files attached and “Create a 4-day tour, the Garden Route Classic”; connected as Windline, create_event makes a draft tour with each day’s km and climbing, the whole-tour map and Open in Windline"></td>
 </tr>
 </table>
 

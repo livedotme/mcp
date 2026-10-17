@@ -102,6 +102,9 @@ try {
   await test('event_weather: inside 10 days, the forecast (Comrades demo; Gravel Burn by stage)', async () => {
     const r = await call('event_weather', { event: 'Comrades demo' }), s = r.structuredContent;
     assert.equal(s.basis, 'forecast'); assert.match(r.content[0].text, /Forecast from Apple Weather/); assert.ok(s.days[0].heat_stress !== undefined);
+    // the forecast's age on every ask, also the second within 30 minutes (served from the memo: the read's own fetch time kept with it)
+    assert.ok(s.forecast_updated, 'no forecast time'); assert.match(r._meta['livedot/view'].updated, /^Forecast updated \d+ min ago · Apple Weather$/); assert.match(r.content[0].text, /Forecast updated \d+ min ago\./);
+    const r2 = await call('event_weather', { event: 'Comrades demo' }); assert.equal(r2.structuredContent.forecast_updated, s.forecast_updated); assert.match(r2._meta['livedot/view'].updated, /^Forecast updated \d+ min ago/); assert.match(r2.content[0].text, /Forecast updated \d+ min ago\./);
     const g = await call('event_weather', { event: 'Gravel Burn', units: 'metric' }); assert.ok(g.structuredContent.days.length >= 6, 'stages'); assert.match(g.content[0].text, /Stage|to /);
   });
   await test('fly_route: "Fly the Comrades" (the demo course), with the weather and the links', async () => {
@@ -139,6 +142,17 @@ try {
     assert.equal(a.tz, 'Africa/Johannesburg'); assert.equal(a.days.length, 2); assert.equal(a.days[0].start, '2027-03-06T04:00:00.000Z'); assert.equal(a.days[1].start, '2027-03-07T04:30:00.000Z'); assert.equal(a.days[0].pts.length, 40);
     const bad = await postRaw({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'list_my_events', arguments: {} } }, { Authorization: 'Bearer expired' });
     assert.equal(bad.status, 401); assert.match(bad.headers.get('WWW-Authenticate'), /error="invalid_token"/);
+    // the draft's card: the days, the whole route coloured day by day, Draft · Publish when you're ready, Open in Windline (the dashboard)
+    const g2 = (from, to, climb, lat) => `<gpx><trk><name>${from} → ${to}</name><desc>climb=${climb}</desc><trkseg>${Array.from({ length: 50 }, (_, i) => `<trkpt lat="${(lat + i * 0.003).toFixed(4)}" lon="${(22.1 + i * 0.006).toFixed(4)}"></trkpt>`).join('')}</trkseg></trk></gpx>`;
+    const d = await postRaw({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'create_event', arguments: { type: 'tour', name: 'Garden Route Classic', days: [{ gpx: g2('Mossel Bay', 'George', 651, -34.18), start: '2027-03-06 07:00', label: 'Day 1' }, { gpx: g2('George', 'Knysna', 1336, -34.03), start: '2027-03-07 07:00', label: 'Day 2' }] } } }, { Authorization: 'Bearer good-token' });
+    const dj = (await d.json()).result, v = dj._meta['livedot/view'];
+    assert.equal(v.kind, 'draft'); assert.equal(v.statusWord, 'Draft'); assert.equal(v.name, 'Garden Route Classic'); assert.match(v.race, /^Tour · 2 days · \d+ km$/);
+    assert.equal(v.updated, 'Draft · Publish when you’re ready'); assert.deepEqual(v.follow, { url: 'https://app.windline.tech/#/e/ev1', label: 'Open in Windline' });
+    assert.equal(v.stops.length, 2); assert.equal(v.stops[0][0], 0); assert.ok(v.stops[1][0] > 0.3 && v.stops[1][0] < 0.7); assert.deepEqual(v.key.map((k) => k[1]), ['Day 1', 'Day 2']); assert.ok(v.course.length >= 98);
+    assert.equal(v.ahead[1].k, 'Day 2 · George → Knysna'); assert.equal(v.ahead[1].at, '7:00'); assert.match(v.ahead[1].sub, /^1,336 m up · Sun 7 Mar$/); assert.match(v.headline, /· 1,987 m up$/);
+    assert.deepEqual(v.stats.map((x) => x.k), ['First day', 'Last day', 'Distance', 'Climbing']); assert.equal(v.stats[0].sub, '6 Mar 2027'); assert.equal(v.stats[3].v, '1,987 m');
+    const ce = (await post({ jsonrpc: '2.0', id: 7, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'create_event');
+    assert.equal(ce._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(ce._meta['openai/outputTemplate'], 'ui://livedot/live-map.html'); assert.deepEqual(ce._meta.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]);
     const pub = await postRaw({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'publish_event', arguments: { event_id: 'ev1', confirm: true } } }, { Authorization: 'Bearer good-token' });
     const pj = await pub.json(); const last = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop(); assert.equal(last.args.id, 'ev1'); assert.equal(last.args.event_id, 'ev1'); assert.ok(pj.result);
   });

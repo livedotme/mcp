@@ -1,0 +1,95 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "livedot",
+  "version": "1.0.0",
+  "description": "Live race tracking, race-day weather and course flyovers for running and cycling, from livedot (Windline for cycling, RunFast for running).",
+  "author": {
+    "name": "livedot",
+    "url": "https://livedot.me"
+  },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "livedot",
+        "shortDescription": "Live race tracking + weather",
+        "longDescription": "livedot brings live race tracking into ChatGPT. Ask \"Where's Megan in the Comrades?\" and get her km, her time against her goal, her finish time and the weather where she is, with a live map. When a name fits many people, livedot shows the likeliest few and asks one short question instead of guessing.\n\nBefore race day it gives the weather along the course at the times runners and riders get there (the live forecast within 10 days, 10 years of weather on the date beyond), a flyover of the course, and a cycling tour's days with route files when the organiser shares them.\n\nOrganisers can sign in with their Windline or RunFast account to create events as drafts, add tour notes, post club rides and publish after confirming. Cycling on Windline, running on RunFast. Only people who chose to be findable on public races are shown, and no position is shared near the start or finish or when someone has stopped. Free, thanks to ProLend.",
+        "developerName": "livedot",
+        "category": "Sports",
+        "capabilities": [],
+        "websiteURL": "https://livedot.me/mcp",
+        "supportURL": "https://livedot.me/mcp",
+        "privacyPolicyURL": "https://livedot.me/privacy",
+        "termsOfServiceURL": "https://livedot.me/terms",
+        "defaultPrompt": [
+          "Where's the demo runner in the Comrades demo?",
+          "Fly the Comrades",
+          "What will the weather be like for the NYC Marathon?"
+        ],
+        "brandColor": "#0B1B2B",
+        "brandColorDark": "#2FD39B",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png",
+        "screenshots": [
+          "./assets/screenshot-1.png",
+          "./assets/screenshot-2.png",
+          "./assets/screenshot-3.png"
+        ]
+      },
+      "onboardingSkill": "./skills/get-started/SKILL.md",
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Find a runner in a live race",
+              "prompt": "Where's the demo runner in the Comrades demo?",
+              "tools_triggered": "find_person",
+              "expected_behavior": "Answers with Megan N. (demo): her km of 90 km, time against her goal, finish estimate and the weather where she is, with a live map widget and a Follow live link."
+            },
+            {
+              "description": "How a live race is going",
+              "prompt": "How's the Coast Classic demo going?",
+              "tools_triggered": "event_status",
+              "expected_behavior": "Says the race is live, how long it has run, how many are on the map, who is out front and the leaders, with the race map widget."
+            },
+            {
+              "description": "Fly a course",
+              "prompt": "Fly the Comrades",
+              "tools_triggered": "fly_route",
+              "expected_behavior": "Shows the Comrades (demo) course flyover widget with the weather along the course and links to fly it in 3D and open on livedot."
+            },
+            {
+              "description": "Race-day weather beyond the forecast",
+              "prompt": "What will the weather be like for the NYC Marathon?",
+              "tools_triggered": "event_weather",
+              "expected_behavior": "Gives typical race-day weather from 10 years of data (or the live forecast within 10 days), clearly labelled, with the rating and a link to livedot's guide."
+            },
+            {
+              "description": "A cycling tour's route",
+              "prompt": "What's the ProLend 2027 Durban Tour route? Give me the GPX files.",
+              "tools_triggered": "tour_route",
+              "expected_behavior": "Lists the 6 days with distances and the map, and says the organiser hasn't made the route files available (no made-up links)."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Unknown person",
+              "prompt": "Where's Zebedee Quux in the Comrades?"
+            },
+            {
+              "description": "Unrelated question",
+              "prompt": "What's a good pizza dough recipe?"
+            },
+            {
+              "description": "Private location request",
+              "prompt": "Where does Megan from the Comrades live?"
+            }
+          ]
+        },
+        "demo_recording_url": "REPLACE_WITH_VIDEO_URL"
+      },
+      "publication": {
+        "release_notes": "First release: follow people in live races, race-day weather, course flyovers, cycling tour routes and notes; organiser sign-in to create and publish events."
+      }
+    }
+  }
+}
