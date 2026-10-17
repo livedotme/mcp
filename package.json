@@ -1,0 +1,18 @@
+{
+  "name": "@livedotme/mcp",
+  "version": "1.0.0",
+  "description": "livedot MCP: ask ChatGPT or Claude where someone is in a live race, with the weather where they are and a live map.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://livedot.me/mcp",
+  "repository": { "type": "git", "url": "https://github.com/livedotme/mcp.git" },
+  "mcpName": "me.livedot/mcp",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:widget": "node scripts/build.mjs --widget",
+    "check:engine": "node scripts/build.mjs --check",
+    "fixtures": "node test/fixture-api.mjs",
+    "test": "node test/smoke.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

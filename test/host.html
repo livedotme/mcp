@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>livedot MCP test host</title>
+<!-- A minimal MCP Apps host for testing the widget: it calls a tool on the server (Streamable HTTP), reads the ui:// resource,
+     renders it in a sandboxed iframe and speaks the host side of the bridge (ui/initialize, tool-input, tool-result, tools/call,
+     ui/open-link, size-changed). Links are never opened: they're shown. ?server=&tool=&args=&q=&theme=&width= -->
+<style>
+:root{--bg:#F7F8FA;--ink:#0B1B2B;--mut:#5F6E7E;--line:rgba(11,27,43,.1);--me:#0B1B2B}
+:root[data-theme=dark]{--bg:#0B0F14;--ink:#E8EEF6;--mut:#9AA8BA;--line:rgba(255,255,255,.1);--me:#2A3442}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:var(--w,760px);margin:0 auto;padding:28px 16px 40px}
+.me{margin:0 0 18px auto;max-width:80%;width:fit-content;background:var(--me);color:#fff;padding:10px 14px;border-radius:16px 16px 4px 16px}
+.ai{white-space:pre-wrap;margin:0 0 14px}
+iframe{display:block;width:100%;border:0;height:520px;background:transparent}
+.log{margin-top:12px;color:var(--mut);font-size:12px}
+</style>
+</head>
+<body>
+<main>
+  <p class="me" id="q"></p>
+  <div class="ai" id="text">…</div>
+  <iframe id="w" sandbox="allow-scripts" title="livedot live map"></iframe>
+  <div class="log" id="log"></div>
+</main>
+<script>
+// never open anything from a test: links, share sheets and the clipboard are stubbed
+window.open = function (u) { log('window.open stubbed: ' + u); return null; };
+try { navigator.share = function () { return Promise.resolve(); }; } catch (e) {}
+try { Object.defineProperty(navigator, 'clipboard', { value: { writeText: function () { return Promise.resolve(); } } }); } catch (e) {}
+var P = new URLSearchParams(location.search), SERVER = P.get('server') || 'http://localhost:8788/mcp', TOOL = P.get('tool') || 'find_person';
+var ARGS = JSON.parse(P.get('args') || '{"name_or_handle":"Megan","event":"Comrades"}'), THEME = P.get('theme') || 'light';
+document.documentElement.setAttribute('data-theme', THEME); if (P.get('width')) document.documentElement.style.setProperty('--w', P.get('width') + 'px');
+document.getElementById('q').textContent = P.get('q') || 'Where’s Megan in the Comrades?';
+var n = 0, frame = document.getElementById('w'), RESULT = null;
+function log(t) { var el = document.getElementById('log'); el.textContent = t; }
+function rpc(method, params) { return fetch(SERVER, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++n, method: method, params: params }) }).then(function (r) { return r.json(); }).then(function (j) { if (j.error) throw new Error(j.error.message); return j.result; }); }
+function reply(id, result) { frame.contentWindow.postMessage({ jsonrpc: '2.0', id: id, result: result }, '*'); }
+function tell(method, params) { frame.contentWindow.postMessage({ jsonrpc: '2.0', method: method, params: params }, '*'); }
+window.addEventListener('message', function (e) {
+  if (e.source !== frame.contentWindow) return; var m = e.data; if (!m || m.jsonrpc !== '2.0') return;
+  if (m.method === 'ui/initialize') reply(m.id, { protocolVersion: '2026-01-26', hostInfo: { name: 'livedot-test-host', version: '1' }, hostCapabilities: { openLinks: {}, serverTools: {} }, hostContext: { theme: THEME, displayMode: 'inline', locale: 'en-ZA', platform: 'web' } });
+  else if (m.method === 'ui/notifications/initialized') { tell('ui/notifications/tool-input', { arguments: ARGS }); tell('ui/notifications/tool-result', RESULT); }
+  else if (m.method === 'tools/call') rpc('tools/call', m.params).then(function (r) { reply(m.id, r); log('tools/call ' + m.params.name + ' ' + JSON.stringify(m.params.arguments)); });
+  else if (m.method === 'ui/open-link') { log('Would open: ' + m.params.url); reply(m.id, {}); }
+  else if (m.method === 'ui/notifications/size-changed') frame.style.height = Math.max(120, m.params.height) + 'px';
+});
+rpc('initialize', { protocolVersion: '2025-11-25', capabilities: { extensions: { 'io.modelcontextprotocol/ui': { mimeTypes: ['text/html;profile=mcp-app'] } } }, clientInfo: { name: 'livedot-test-host', version: '1' } })
+  .then(function () { return Promise.all([rpc('tools/call', { name: TOOL, arguments: ARGS }), rpc('resources/read', { uri: 'ui://livedot/live-map.html' })]); })
+  .then(function (got) { RESULT = got[0]; document.getElementById('text').textContent = RESULT.content[0].text; frame.srcdoc = got[1].contents[0].text; })
+  .catch(function (e) { document.getElementById('text').textContent = 'Error: ' + e.message; });
+</script>
+</body>
+</html>

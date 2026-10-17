@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>livedot live map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;800&display=swap">
+<!-- livedot MCP's widget: the answer as a live map (one person), a picker (several), or a race. It draws what the tool sent
+     (_meta["livedot/view"]): every number and word is the server's, from the public reads and Windline's forecast engine.
+     Bridges: MCP Apps (postMessage JSON-RPC: Claude, ChatGPT, any MCP Apps host) and ChatGPT's window.openai.
+     The map is always light (OpenFreeMap positron, livedot's own basemap); without it, a plain drawn course. Never a map key. -->
+<style>
+:root{
+  --navy:#0B1B2B;--live:#2FD39B;--live-ink:#0A7A54;--live-wash:rgba(47,211,155,.15);--warn:#F5A524;--warn-ink:#8A5300;--warn-wash:rgba(245,165,36,.16);
+  --bad-ink:#B42318;--bad-wash:rgba(217,45,32,.1);--ground:#F3F5F7;--paper:#FFFFFF;--ink:#0B1B2B;--body:#3B4A5A;--muted:#5F6E7E;--faint:#8E9AA7;
+  --line:rgba(11,27,43,.09);--line-2:rgba(11,27,43,.17);--soft:#EDF1F4;--hover:#F6F8FA;--cyc:#635BFF;--cyc-ink:#4B44D6;--run:#EE7A1F;--run-ink:#B54708;
+  --acc:var(--cyc);--acc-ink:var(--cyc-ink);
+  --font:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--sh:0 1px 2px rgba(11,27,43,.05),0 12px 28px -18px rgba(11,27,43,.28);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --ground:#07111B;--paper:#0E1C2B;--ink:#EEF3F8;--body:#B5C2CF;--muted:#8697A8;--faint:#607286;--line:rgba(255,255,255,.08);--line-2:rgba(255,255,255,.15);
+  --soft:#14263A;--hover:#122437;--live-ink:#2FD39B;--live-wash:rgba(47,211,155,.13);--warn-ink:#FFC266;--warn-wash:rgba(255,181,71,.14);--bad-ink:#FF8A80;--bad-wash:rgba(255,99,88,.14);
+  --cyc:#8B85FF;--cyc-ink:#ABA6FF;--run:#FF9A4D;--run-ink:#FFB27A;--sh:0 1px 0 rgba(255,255,255,.04) inset,0 12px 28px -18px rgba(0,0,0,.8);color-scheme:dark;
+}
+.run{--acc:var(--run);--acc-ink:var(--run-ink)}
+*{box-sizing:border-box}
+html,body{margin:0;background:transparent;color:var(--ink);font:400 15px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+.num{font-variant-numeric:tabular-nums}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--sh)}
+.hd{display:flex;align-items:center;gap:12px;padding:16px 18px 14px}
+.mark{width:28px;height:28px;flex:none}
+.ttl{min-width:0;flex:1}
+.ttl b{display:block;font-weight:800;font-size:18px;letter-spacing:-.025em;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ttl span{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:99px;font:600 12px/1 var(--font);white-space:nowrap;background:var(--soft);color:var(--muted)}
+.pill.live{background:var(--live-wash);color:var(--live-ink)}
+.pill.live i{width:7px;height:7px;border-radius:50%;background:var(--live);box-shadow:0 0 0 0 rgba(47,211,155,.6);animation:pulse 1.8s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,211,155,.55)}80%{box-shadow:0 0 0 7px rgba(47,211,155,0)}100%{box-shadow:0 0 0 0 rgba(47,211,155,0)}}
+.back{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:9px;color:var(--muted);flex:none}
+.back:hover{background:var(--hover);color:var(--ink)}.back:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
+/* the map: always light */
+.map{position:relative;height:300px;background:#EEF2F5;border-top:1px solid var(--line);border-bottom:1px solid var(--line);color-scheme:light}
+.map>#gl,.map>svg{position:absolute;inset:0;width:100%;height:100%}
+.map>#gl{opacity:0;transition:opacity .5s}.map.gl-on>#gl{opacity:1}.map.gl-on>svg{opacity:0;transition:opacity .4s}
+.headline{position:absolute;left:12px;top:12px;z-index:3;background:rgba(255,255,255,.94);color:#0B1B2B;border-radius:10px;padding:7px 11px;font:800 17px/1.1 var(--font);letter-spacing:-.02em;box-shadow:0 1px 2px rgba(11,27,43,.1),0 6px 16px -8px rgba(11,27,43,.35)}
+.headline small{display:block;font:600 11px/1.3 var(--font);letter-spacing:0;color:#5F6E7E;margin-top:2px}
+.key{position:absolute;left:12px;bottom:12px;z-index:3;background:rgba(255,255,255,.94);color:#3B4A5A;border-radius:10px;padding:7px 10px;font:600 11px/1.2 var(--font);box-shadow:0 1px 2px rgba(11,27,43,.1);max-width:calc(100% - 24px)}
+.key p{margin:0 0 5px;color:#5F6E7E;font-weight:600}
+.key ul{display:flex;flex-wrap:wrap;gap:4px 10px;margin:0;padding:0;list-style:none}
+.key li{display:flex;align-items:center;gap:5px;white-space:nowrap}.key i{width:14px;height:5px;border-radius:3px}
+.dot{width:20px;height:20px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 0 0 0 rgba(99,91,255,.45),0 2px 6px rgba(11,27,43,.35);animation:ring 2s infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(99,91,255,.45),0 2px 6px rgba(11,27,43,.35)}75%{box-shadow:0 0 0 14px rgba(99,91,255,0),0 2px 6px rgba(11,27,43,.35)}100%{box-shadow:0 0 0 0 rgba(99,91,255,0),0 2px 6px rgba(11,27,43,.35)}}
+.run .dot{animation-name:ringr}
+@keyframes ringr{0%{box-shadow:0 0 0 0 rgba(238,122,31,.45),0 2px 6px rgba(11,27,43,.35)}75%{box-shadow:0 0 0 14px rgba(238,122,31,0),0 2px 6px rgba(11,27,43,.35)}100%{box-shadow:0 0 0 0 rgba(238,122,31,0),0 2px 6px rgba(11,27,43,.35)}}
+.ghost{width:14px;height:14px;border-radius:50%;border:2px dashed #0B1B2B;background:rgba(255,255,255,.7)}
+.pdot{width:9px;height:9px;border-radius:50%;background:var(--acc);border:2px solid #fff;box-shadow:0 1px 3px rgba(11,27,43,.35)}.pdot.lead{width:14px;height:14px}
+/* the numbers */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line)}
+.stat{background:var(--paper);padding:12px 16px}
+.stat .k{color:var(--muted);font:600 12px/1.3 var(--font)}
+.stat .v{font:800 18px/1.25 var(--font);letter-spacing:-.02em;margin-top:2px}
+.stat .s{color:var(--muted);font-size:12px;margin-top:1px}
+.stat.good .v{color:var(--live-ink)}.stat.warn .v{color:var(--warn-ink)}.stat.bad .v{color:var(--bad-ink)}
+.sec{padding:14px 16px 4px}.sec h3{margin:0 0 8px;font:600 13px/1.3 var(--font);color:var(--muted)}
+.ahead{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:0 16px 14px}
+.leg{border:1px solid var(--line);border-radius:12px;padding:9px 11px 9px 14px;position:relative;overflow:hidden}
+.leg:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c)}
+.leg .k{color:var(--muted);font:600 12px/1.3 var(--font)}.leg .v{font:600 14px/1.3 var(--font);margin-top:2px}.leg .s{color:var(--muted);font-size:12px}
+.ft{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px 16px;border-top:1px solid var(--line)}
+.btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:10px;background:var(--navy);color:#fff;font:600 14px/1 var(--font);box-shadow:0 1px 2px rgba(11,27,43,.2)}
+:root[data-theme="dark"] .btn{background:#fff;color:#0B1B2B}
+.btn:hover{filter:brightness(1.12)}.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.btn i{width:8px;height:8px;border-radius:50%;background:var(--live)}
+.meta{color:var(--muted);font-size:12px;line-height:1.4;flex:1;min-width:180px}
+.sp{display:block;padding:10px 16px 12px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);background:var(--ground)}
+/* the picker */
+.find{padding:0 16px 12px}
+.box{display:flex;align-items:center;gap:8px;height:40px;padding:0 12px;border:1px solid var(--line-2);border-radius:10px;background:var(--paper);color:var(--muted)}
+.box:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent)}
+.box input{all:unset;flex:1;color:var(--ink);font:400 15px/1 var(--font)}.box input::placeholder{color:var(--faint)}
+.box kbd{font:600 11px/1 var(--font);color:var(--faint);border:1px solid var(--line-2);border-radius:5px;padding:3px 5px}
+ul.rows{list-style:none;margin:0;padding:0 8px 8px;max-height:340px;overflow:auto}
+.row{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:9px 10px;border-radius:10px}
+.row:hover,.row:focus-visible{background:var(--hover)}.row:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.av{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;font:800 13px/1 var(--font);color:#fff;background:var(--acc)}
+.row .mid{min-width:0;flex:1}.row b{display:block;font:600 15px/1.25 var(--font)}.row .sub{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .chev{color:var(--faint);flex:none}.row.busy{opacity:.55;pointer-events:none}
+.why{margin:0;padding:12px 16px;color:var(--body);font-size:14px;border-bottom:1px solid var(--line)}
+.btn.sec2{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}:root[data-theme="dark"] .btn.sec2{background:transparent;color:var(--ink)}
+.map.fly{height:360px}
+.hud{position:absolute;left:12px;top:12px;z-index:3;background:rgba(11,27,43,.86);color:#fff;border-radius:12px;padding:9px 12px;min-width:150px;backdrop-filter:blur(8px);box-shadow:0 8px 24px -10px rgba(0,0,0,.5)}
+.hud b{display:block;font:800 20px/1.1 var(--font);letter-spacing:-.02em}.hud span{display:flex;align-items:center;gap:7px;font:600 12px/1.3 var(--font);color:#D7E0EA;margin-top:4px}.hud i{width:10px;height:10px;border-radius:3px;flex:none}
+.ctl{position:absolute;right:12px;top:12px;z-index:3;display:flex;gap:6px}
+.ctl button{all:unset;cursor:pointer;height:32px;padding:0 12px;border-radius:9px;background:rgba(255,255,255,.95);color:#0B1B2B;font:600 12px/32px var(--font);box-shadow:0 1px 2px rgba(11,27,43,.15)}
+.ctl button:focus-visible{outline:2px solid var(--acc)}
+.hint{color:var(--muted);font-size:13px;padding:6px 18px 14px;margin:0}
+.tag{display:inline-block;font:600 11px/1 var(--font);padding:3px 6px;border-radius:6px;background:var(--live-wash);color:var(--live-ink);margin-left:6px;vertical-align:1px}
+.empty{padding:28px 18px;color:var(--muted);text-align:center}
+.skel{height:300px;display:grid;place-items:center;color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion:reduce){.dot,.pill.live i{animation:none}}
+@media (max-width:420px){.map{height:240px}.ttl b{font-size:16px}.stat{padding:10px 12px}}
+</style>
+</head>
+<body>
+<div id="root"><div class="card"><div class="skel">Loading the live map…</div></div></div>
+<script>
+(function () {
+'use strict';
+var root = document.getElementById('root'), V = null, STACK = [], seq = 0;
+var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+var MARK = '<svg class="mark" viewBox="20 20 60 60" aria-hidden="true"><circle cx="50" cy="50" r="26" fill="none" stroke="#2FD39B" stroke-width="5" stroke-linecap="round" stroke-dasharray="128 35.4" transform="rotate(-20 50 50)" opacity=".55"/><circle cx="50" cy="50" r="13" fill="#2FD39B"/></svg>';
+var CHEV = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" class="chev"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var BACK = '<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var SEARCH = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+// ---------------------------------------------------------------- the host: MCP Apps (postMessage JSON-RPC) or ChatGPT (window.openai)
+var OA = window.openai || null, pending = {}, rid = 0, ready = false;
+function send(msg) { try { window.parent.postMessage(msg, '*'); } catch (e) { /* no parent */ } }
+function request(method, params) { var id = ++rid; send({ jsonrpc: '2.0', id: id, method: method, params: params || {} }); return new Promise(function (ok, no) { pending[id] = { ok: ok, no: no }; setTimeout(function () { if (pending[id]) { delete pending[id]; no(new Error('timeout')); } }, 20000); }); }
+function notify(method, params) { send({ jsonrpc: '2.0', method: method, params: params || {} }); }
+window.addEventListener('message', function (e) {
+  var m = e.data; if (!m || m.jsonrpc !== '2.0') return;
+  if (m.id != null && pending[m.id] && (m.result !== undefined || m.error)) { var p = pending[m.id]; delete pending[m.id]; return m.error ? p.no(new Error(m.error.message || 'error')) : p.ok(m.result); }
+  if (m.method === 'ui/notifications/tool-result') fromResult(m.params);
+  else if (m.method === 'ui/notifications/host-context-changed') context(m.params);
+  else if (m.method === 'ui/resource-teardown' && m.id != null) send({ jsonrpc: '2.0', id: m.id, result: {} });
+});
+function context(c) { if (c && c.theme) theme(c.theme); }
+function theme(t) { document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); }
+var host = {
+  call: function (name, args) {
+    if (OA && OA.callTool) return Promise.resolve(OA.callTool(name, args)).then(function (r) { return r && (r._meta || r.structuredContent) ? r : { _meta: r && r.meta, structuredContent: r && r.structuredContent }; });
+    return request('tools/call', { name: name, arguments: args });
+  },
+  open: function (url) {
+    if (OA && OA.openExternal) { try { return OA.openExternal({ href: url }); } catch (e) { /* fall through */ } }
+    request('ui/open-link', { url: url }).catch(function () { try { window.open(url, '_blank', 'noopener'); } catch (e) { /* */ } });
+  },
+  size: function () {
+    var h = Math.ceil(document.documentElement.getBoundingClientRect().height);
+    if (OA && OA.notifyIntrinsicHeight) { try { OA.notifyIntrinsicHeight(h); } catch (e) { /* */ } }
+    if (ready) notify('ui/notifications/size-changed', { width: Math.ceil(document.documentElement.clientWidth), height: h });
+  }
+};
+function fromResult(r) { var v = r && r._meta && r._meta['livedot/view']; if (v) { STACK = []; show(v); } else if (r && r.content) message(r.content.map(function (c) { return c.text || ''; }).join('\n')); }
+if (OA) {
+  theme(OA.theme);
+  var pull = function () { var m = OA.toolResponseMetadata, v = m && m['livedot/view']; if (v && v !== V && !STACK.length) show(v); else if (!V && OA.toolOutput && OA.toolOutput.message) message(OA.toolOutput.message); theme(OA.theme); };
+  window.addEventListener('openai:set_globals', pull); pull();
+} else {
+  request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'livedot', version: '1.0.0' }, appCapabilities: {} })
+    .then(function (r) { ready = true; context(r && r.hostContext); notify('ui/notifications/initialized', {}); host.size(); })
+    .catch(function () { /* not in a host: the test page sets window.LD_VIEW */ });
+}
+if (window.LD_VIEW) show(window.LD_VIEW);
+if ('ResizeObserver' in window) new ResizeObserver(function () { host.size(); }).observe(document.body);
+
+// ---------------------------------------------------------------- views
+function message(t) { root.innerHTML = '<div class="card"><div class="hd">' + MARK + '<div class="ttl"><b>livedot</b></div></div><p class="hint">' + esc(t).replace(/\n/g, '<br>') + '</p></div>'; host.size(); }
+function show(v) {
+  V = v; seq++;
+  document.body.className = v.sport === 'run' || v.sport === 'running' ? 'run' : '';
+  if (v.kind === 'picker') return picker(v);
+  return mapView(v);
+}
+function head(title, sub, pill, back) {
+  return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
+}
+var pillOf = function (v) { var live = /^(Live|No signal|Forecast)$/.test(v.statusWord); return '<span class="pill' + (live ? ' live' : '') + '">' + (live ? '<i></i>' : '') + esc(v.statusWord || '') + '</span>'; };
+
+function mapView(v) {
+  var back = STACK.length > 0, h = '<div class="card">' + head(v.name, v.kind === 'event' ? v.headline : v.race, pillOf(v), back);
+  var fly = v.kind === 'fly';
+  h += '<div class="map' + (fly ? ' fly' : '') + '" id="map"><svg id="svg" aria-hidden="true"></svg><div id="gl"></div>'
+    + (fly ? '<div class="hud" id="hud"><b class="num">' + esc(v.headline || '') + '</b><span id="hudw">' + esc(v.race || '') + '</span></div><div class="ctl"><button type="button" id="play">Play</button><button type="button" id="whole">Whole route</button></div>' : '')
+    + (v.headline && v.kind !== 'event' && !fly ? '<div class="headline num">' + esc(v.headline) + (v.updated ? '<small>' + esc(v.updated.split(' · ')[0]) + '</small>' : '') + '</div>' : '')
+    + (v.key ? '<div class="key"><p>' + esc(v.keyTitle) + '</p><ul>' + v.key.map(function (k) { return '<li><i style="background:' + k[0] + '"></i>' + esc(k[1]) + '</li>'; }).join('') + '</ul></div>' : '') + '</div>';
+  if (v.stats && v.stats.length) h += '<div class="stats">' + v.stats.map(function (s) { return '<div class="stat ' + (s.tone || '') + '"><div class="k">' + esc(s.k) + '</div><div class="v num">' + esc(s.v) + '</div>' + (s.sub ? '<div class="s">' + esc(s.sub) + '</div>' : '') + '</div>'; }).join('') + '</div>';
+  if (v.why) h += '<p class="why">' + esc(v.why) + '</p>';
+  if (v.ahead && v.ahead.length) h += '<div class="sec"><h3>' + esc(v.aheadTitle || 'The road ahead') + '</h3></div><div class="ahead">' + v.ahead.map(function (a) { return '<div class="leg" style="--c:' + esc(a.c) + '"><div class="k num">' + esc(a.k) + ' · ' + esc(a.at) + '</div><div class="v num">' + esc(a.v) + '</div><div class="s num">' + esc(a.sub) + '</div></div>'; }).join('') + '</div>';
+  if (v.leaders && v.leaders.length) h += '<div class="sec"><h3>Out front</h3></div><ul class="rows">' + v.leaders.map(function (l, i) { return '<li><div class="row" style="cursor:default"><span class="av num">' + (i + 1) + '</span><span class="mid"><b>' + esc(l.k) + '</b><span class="sub num">' + esc(l.v) + '</span></span></div></li>'; }).join('') + '</ul>';
+  h += '<div class="ft">' + (v.fly ? '<button class="btn" type="button" data-open="' + esc(v.fly.url) + '"><i></i>' + esc(v.fly.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.fly ? ' sec2' : '') + '" type="button" data-open="' + esc(v.follow.url) + '">' + (v.fly ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta">' + esc(v.updated || '') + '</span></div>';
+  h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
+  root.innerHTML = h; wire(); drawSvg(v); drawGl(v, seq); host.size();
+}
+
+function picker(v) {
+  var h = '<div class="card">' + head(v.title, v.subtitle, '<span class="pill">' + esc(v.total) + '</span>');
+  h += '<div class="find"><label class="box">' + SEARCH + '<input id="q" type="search" autocomplete="off" placeholder="Narrow by surname or initial" aria-label="Narrow by surname or initial"><kbd>Enter</kbd></label></div>';
+  h += '<ul class="rows" id="rows"></ul><p class="hint" id="hint">' + (v.rows.length < 20 ? 'Tap the person you mean.' : 'The ' + v.rows.length + ' most likely. Type a surname or initial to narrow it down.') + '</p>';
+  h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
+  root.innerHTML = h; rows(v.rows); wire();
+  var q = document.getElementById('q'), t = 0;
+  q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { var s = q.value.trim().toLowerCase(); rows(v.rows.filter(function (r) { return !s || r.name.toLowerCase().split(/\s+/).some(function (w) { return w.indexOf(s) === 0; }); })); }, 80); });
+  q.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return; e.preventDefault(); var s = q.value.trim(); if (!s) return;
+    var box = document.getElementById('rows'); box.innerHTML = '<li class="empty">Searching…</li>';
+    host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; if (nv && nv.kind === 'picker') show(nv); else if (nv) { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
+      .catch(function () { box.innerHTML = '<li class="empty">That didn’t load. Try again.</li>'; });
+  });
+  host.size();
+}
+function rows(list) {
+  var box = document.getElementById('rows');
+  if (!list.length) { box.innerHTML = '<li class="empty">No one here by that name. Press Enter to search the whole race.</li>'; host.size(); return; }
+  box.innerHTML = list.map(function (r) {
+    var ini = r.name.replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2), sub = [r.where, r.pace, r.goal, r.extra].filter(Boolean).join(' · ') || (r.race || ''), live = /^(live|delayed|nosignal)$/.test(r.status);
+    return '<li><button class="row" type="button" data-id="' + esc(r.id) + '"><span class="av" style="background:' + (r.sport === 'running' ? 'var(--run)' : 'var(--cyc)') + '">' + esc(ini) + '</span><span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
+      + (live ? '<span class="pill live"><i></i>Live</span>' : r.status ? '<span class="pill">' + esc({ paused: 'Paused', stopped: 'Stopped', finished: 'Finished', waiting: 'Not started' }[r.status] || r.status) + '</span>' : '') + CHEV + '</button></li>';
+  }).join('');
+  host.size();
+}
+function wire() {
+  root.querySelectorAll('[data-open]').forEach(function (b) { b.addEventListener('click', function () { host.open(b.getAttribute('data-open')); }); });
+  root.querySelectorAll('[data-back]').forEach(function (b) { b.addEventListener('click', function () { var p = STACK.pop(); if (p) show(p); }); });
+  var box = document.getElementById('rows');
+  if (box && V && V.kind === 'picker') box.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-id]'); if (!b) return; b.classList.add('busy'); var from = V;
+    host.call('where_is', { person: b.getAttribute('data-id'), units: V.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; b.classList.remove('busy'); if (nv) { STACK.push(from); show(nv); } })
+      .catch(function () { b.classList.remove('busy'); });
+  });
+}
+
+// ---------------------------------------------------------------- the plain map: the course drawn on its own (no tiles), first and always
+function proj(v, w, h, pad) {
+  var pts = v.course.slice(); if (v.dot) pts.push([v.dot.lat, v.dot.lon]); (v.dots || []).forEach(function (d) { pts.push([d.lat, d.lon]); });
+  if (!pts.length) return null;
+  var la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; pts.forEach(function (p) { la0 = Math.min(la0, p[0]); la1 = Math.max(la1, p[0]); lo0 = Math.min(lo0, p[1]); lo1 = Math.max(lo1, p[1]); });
+  var k = Math.cos((la0 + la1) / 2 * Math.PI / 180), sx = (lo1 - lo0) * k || 1e-3, sy = (la1 - la0) || 1e-3, s = Math.min((w - pad * 2) / sx, (h - pad * 2) / sy);
+  var ox = (w - sx * s) / 2, oy = (h - sy * s) / 2;
+  return function (lat, lon) { return [ox + (lon - lo0) * k * s, h - oy - (lat - la0) * s]; };
+}
+function colourAt(stops, f) { var c = '#8B85FF'; if (!stops) return c; for (var i = 0; i < stops.length; i++) if (stops[i][0] <= f + 1e-6) c = stops[i][1]; return c; }
+function drawSvg(v) {
+  var svg = document.getElementById('svg'); if (!svg) return; var box = svg.getBoundingClientRect(), w = box.width || 600, h = box.height || 300, P = proj(v, w, h, 36);
+  if (!P) { svg.innerHTML = ''; return; }
+  var n = v.course.length, line = v.course.map(function (p) { var q = P(p[0], p[1]); return q[0].toFixed(1) + ',' + q[1].toFixed(1); }), out = '';
+  out += '<defs><pattern id="g" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#DCE3EA" stroke-width="1"/></pattern></defs><rect width="100%" height="100%" fill="url(#g)"/>';
+  if (n > 1) {
+    out += '<polyline points="' + line.join(' ') + '" fill="none" stroke="#0A2540" stroke-opacity=".82" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>';
+    var i = 0; while (i < n - 1) { var c = colourAt(v.stops, i / (n - 1)), j = i + 1; while (j < n - 1 && colourAt(v.stops, j / (n - 1)) === c) j++; out += '<polyline points="' + line.slice(i, j + 1).join(' ') + '" fill="none" stroke="' + c + '" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>'; i = j; }
+  }
+  if (v.ghost) { var g = P(v.ghost.lat, v.ghost.lon); out += '<circle cx="' + g[0] + '" cy="' + g[1] + '" r="6" fill="#fff" fill-opacity=".8" stroke="#0B1B2B" stroke-width="1.6" stroke-dasharray="3 2"/>'; }
+  var acc = v.sport === 'run' ? '#EE7A1F' : '#635BFF';
+  (v.dots || []).forEach(function (d) { var q = P(d.lat, d.lon); out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + (d.lead ? 6 : 4) + '" fill="' + acc + '" stroke="#fff" stroke-width="2"/>'; });
+  if (v.dot) { var q = P(v.dot.lat, v.dot.lon); out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="16" fill="' + acc + '" opacity=".18"/><circle cx="' + q[0] + '" cy="' + q[1] + '" r="9" fill="' + acc + '" stroke="#fff" stroke-width="3"/>'; }
+  svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); svg.innerHTML = out;
+}
+
+// ---------------------------------------------------------------- the light map (MapLibre on OpenFreeMap positron, as livedot.me), when it loads
+var LIB = 'https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl', STYLE = 'https://tiles.openfreemap.org/styles/positron', libP = null, styleP = null;
+function lib() {
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  return libP || (libP = new Promise(function (ok, no) {
+    var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = LIB + '.css'; document.head.appendChild(l);
+    var s = document.createElement('script'); s.src = LIB + '.js'; s.onload = function () { window.maplibregl ? ok(window.maplibregl) : no(new Error('no maplibre')); }; s.onerror = no; document.head.appendChild(s);
+    setTimeout(function () { no(new Error('slow')); }, 9000);
+  }));
+}
+function style() { // livedot.js mapStyle: water a shade of sea, no road shields, missing numbers read as 0
+  var num = function (a) { return Array.isArray(a) && a[0] === 'get' && a.length === 2 ? ['to-number', a, 0] : fix(a); };
+  var fix = function (x) { if (!Array.isArray(x)) return x; if (/^[<>]=?$/.test(x[0]) && x.length === 3) return [x[0], num(x[1]), num(x[2])]; return x.map(fix); };
+  return styleP || (styleP = fetch(STYLE).then(function (r) { if (!r.ok) throw new Error('style'); return r.json(); }).then(function (s) {
+    s.layers = s.layers.filter(function (l) { return !/shield/.test(l.id); });
+    s.layers.forEach(function (l) { if (l.filter) l.filter = fix(l.filter); if (l.id === 'water' && l.paint) l.paint['fill-color'] = '#D5E1E8'; });
+    return s;
+  }));
+}
+function drawGl(v, my) {
+  if (!v.course.length && !v.dot) return;
+  Promise.all([lib(), style()]).then(function (got) {
+    if (my !== seq) return;
+    var gl = got[0], el = document.getElementById('gl'), wrap = document.getElementById('map'); if (!el) return;
+    if (v.kind === 'fly') { got[1] = JSON.parse(JSON.stringify(got[1])); got[1].sources.dem = { type: 'raster-dem', tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'], encoding: 'terrarium', tileSize: 256, maxzoom: 12 }; got[1].terrain = { source: 'dem', exaggeration: 1.5 }; }
+    var map = new gl.Map({ container: el, style: got[1], maxPitch: 75, attributionControl: { compact: true }, cooperativeGestures: true, fadeDuration: 0, dragRotate: false, pitchWithRotate: false });
+    var b = new gl.LngLatBounds(); v.course.forEach(function (p) { b.extend([p[1], p[0]]); }); if (v.dot) b.extend([v.dot.lon, v.dot.lat]); (v.dots || []).forEach(function (d) { b.extend([d.lon, d.lat]); });
+    map.fitBounds(b, { padding: { top: 64, bottom: v.key ? 76 : 32, left: 32, right: 32 }, duration: 0, maxZoom: 13 });
+    var done = false, fail = setTimeout(function () { if (!done) { try { map.remove(); } catch (e) { /* */ } } }, 9000);
+    map.on('error', function () { /* a tile that didn't load: the plain map stays underneath */ });
+    map.on('load', function () {
+      if (my !== seq) return; done = true; clearTimeout(fail);
+      var co = v.course.map(function (p) { return [p[1], p[0]]; }), round = { 'line-cap': 'round', 'line-join': 'round' };
+      if (co.length > 1) {
+        map.addSource('c', { type: 'geojson', lineMetrics: true, data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: co } } });
+        map.addLayer({ id: 'c-case', type: 'line', source: 'c', layout: round, paint: { 'line-color': '#0A2540', 'line-opacity': .82, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 6, 14, 11] } });
+        var st = v.stops && v.stops.length > 1 ? ['step', ['line-progress'], v.stops[0][1]].concat([].concat.apply([], v.stops.slice(1).map(function (s) { return [s[0], s[1]]; }))) : (v.stops && v.stops[0] ? v.stops[0][1] : '#8B85FF');
+        map.addLayer({ id: 'c-line', type: 'line', source: 'c', layout: round, paint: { 'line-gradient': st, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 14, 6] } });
+      }
+      var mk = function (cls, lon, lat, z) { var d = document.createElement('div'); d.className = cls; var m = new gl.Marker({ element: d }).setLngLat([lon, lat]).addTo(map); m.getElement().style.zIndex = z; return m; };
+      if (v.ghost) mk('ghost', v.ghost.lon, v.ghost.lat, 1);
+      (v.dots || []).forEach(function (d) { mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); });
+      if (v.dot) mk('dot', v.dot.lon, v.dot.lat, 4);
+      map.once('idle', function () { wrap.classList.add('gl-on'); if (v.kind === 'fly') flyOver(map, gl, v); });
+    });
+  }).catch(function () { /* no MapLibre or no basemap here: the plain map is the map */ });
+}
+addEventListener('resize', function () { if (V && V.kind !== 'picker') drawSvg(V); });
+
+// ---------------------------------------------------------------- the flyover: the camera along the course, the weather under it
+function flyOver(map, gl, v) {
+  var co = v.course.map(function (p) { return [p[1], p[0]]; }); if (co.length < 2) return;
+  var rad = Math.PI / 180, cum = [0];
+  for (var i = 1; i < co.length; i++) { var a = co[i - 1], b = co[i], dp = (b[1] - a[1]) * rad, dl = (b[0] - a[0]) * rad, x = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(a[1] * rad) * Math.cos(b[1] * rad) * Math.sin(dl / 2) * Math.sin(dl / 2); cum.push(cum[i - 1] + 12742 * Math.asin(Math.min(1, Math.sqrt(x)))); }
+  var total = cum[cum.length - 1], at = function (d) { d = Math.max(0, Math.min(total, d)); var lo = 0, hi = cum.length - 1; while (hi - lo > 1) { var m = (lo + hi) >> 1; if (cum[m] <= d) lo = m; else hi = m; } var f = cum[hi] === cum[lo] ? 0 : (d - cum[lo]) / (cum[hi] - cum[lo]); return [co[lo][0] + (co[hi][0] - co[lo][0]) * f, co[lo][1] + (co[hi][1] - co[lo][1]) * f]; };
+  var brg = function (p, q) { var y = Math.sin((q[0] - p[0]) * rad) * Math.cos(q[1] * rad), x = Math.cos(p[1] * rad) * Math.sin(q[1] * rad) - Math.sin(p[1] * rad) * Math.cos(q[1] * rad) * Math.cos((q[0] - p[0]) * rad); return Math.atan2(y, x) / rad; };
+  var dur = Math.min(60000, Math.max(24000, total * 450)), zoom = total > 150 ? 11.4 : total > 60 ? 12.2 : 13, look = Math.max(1.2, total * 0.025);
+  var el = document.createElement('div'); el.className = 'dot'; var dot = new gl.Marker({ element: el }).setLngLat(co[0]).addTo(map);
+  var done = 0, t0 = null, raf = 0, playing = false, b0 = brg(co[0], at(look)), play = document.getElementById('play'), hud = document.getElementById('hud');
+  var still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function show(f) {
+    var L = (v.legs || []).filter(function (l) { return f >= l[0] && f <= l[1] + 1e-6; })[0];
+    if (L && hud) hud.innerHTML = '<b class="num">' + esc(L[4]) + '</b><span><i style="background:' + esc(L[3]) + '"></i>' + esc(L[2]) + '</span>';
+  }
+  function step(ts) {
+    if (!playing) return; if (t0 == null) t0 = ts - done * dur;
+    var f = Math.min(1, (ts - t0) / dur); done = f;
+    var d = f * total, p = at(d), q = at(d + look), want = brg(p, q), diff = ((want - b0 + 540) % 360) - 180; b0 += diff * 0.04;
+    map.jumpTo({ center: at(d + look * 0.35), bearing: b0, pitch: 62, zoom: zoom }); dot.setLngLat(p); show(f);
+    if (f < 1) raf = requestAnimationFrame(step); else { playing = false; done = 0; play.textContent = 'Play again'; whole(); }
+  }
+  function start() { playing = true; t0 = null; play.textContent = 'Pause'; raf = requestAnimationFrame(step); }
+  function stop() { playing = false; cancelAnimationFrame(raf); play.textContent = 'Play'; }
+  function whole() { var bb = new gl.LngLatBounds(); co.forEach(function (c) { bb.extend(c); }); map.fitBounds(bb, { padding: 48, pitch: 30, bearing: 0, duration: still ? 0 : 1600 }); }
+  play.addEventListener('click', function () { if (playing) stop(); else { if (done === 0) map.jumpTo({ center: co[0], zoom: zoom, pitch: 62, bearing: b0 }); start(); } });
+  document.getElementById('whole').addEventListener('click', function () { stop(); whole(); });
+  map.on('dragstart', stop);
+  show(0);
+  if (!still) setTimeout(function () { map.easeTo({ center: at(look * 0.35), zoom: zoom, pitch: 62, bearing: b0, duration: 1800 }); setTimeout(start, 1900); }, 600);
+}
+})();
+</script>
+</body>
+</html>

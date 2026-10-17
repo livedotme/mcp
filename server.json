@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "me.livedot/mcp",
+  "title": "livedot MCP",
+  "description": "Where someone is in a live race, the weather on the course, and race-day forecasts, with a live map.",
+  "version": "1.0.0",
+  "websiteUrl": "https://livedot.me/mcp",
+  "repository": { "url": "https://github.com/livedotme/mcp", "source": "github" },
+  "icons": [
+    { "src": "https://livedot.me/brand/icon.svg", "mimeType": "image/svg+xml", "sizes": ["any"] },
+    { "src": "https://livedot.me/brand/png/icon-512.png", "mimeType": "image/png", "sizes": ["512x512"] }
+  ],
+  "remotes": [
+    { "type": "streamable-http", "url": "https://livedot.me/mcp" }
+  ]
+}
