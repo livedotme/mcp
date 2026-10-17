@@ -356,11 +356,11 @@ export async function eventStatus(ctx, args) {
   const fin = L.filter((p) => p.status === 'finished').sort((a, b) => (a.finish || 0) - (b.finish || 0));
   const out = L.filter((p) => MOVING.includes(p.status)).sort((a, b) => (b.km || 0) - (a.km || 0));
   const started = e.started || (L.length ? Math.min(...L.map((p) => p.started || Infinity)) : null), total = (out[0] && out[0].total) || (cb && cb.km) || (e.leader && e.leader.total);
-  const leaders = [...fin.slice(0, 3).map((p) => ({ name: shortName(p.name), finished: hms(((p.finish || 0) - (p.started || 0)) / 1000) })), ...out.slice(0, 5 - Math.min(3, fin.length)).map((p) => ({ name: shortName(p.name), km: +p.km.toFixed(1), where: f.atShort(p.km) }))];
+  const leaders = [...fin.slice(0, 3).map((p) => ({ name: shortName(p.name), finished: hms(((p.finish || 0) - (p.started || 0)) / 1000) })), ...out.slice(0, 5 - Math.min(3, fin.length)).map((p) => (sharesPosition(p) ? { name: shortName(p.name), km: +p.km.toFixed(1), where: f.atShort(p.km) } : { name: shortName(p.name), km: null, where: 'on the course' }))]; // a km only where the public answer gives a position (KPMG C2: never near the start or finish, never stopped)
   const nm = e.name, lines = [];
   lines.push(`${nm} is live` + (started && isFinite(started) ? `: under way for ${span((now - started) / 1000)} (it's ${clock(now, tz, f)} there)` : '') + '.');
   lines.push(`${count} ${count === 1 ? PERSON[app] : PERSON[app] + 's'} on livedot's map${fin.length ? `, ${fin.length} finished` : ''}.`);
-  if (out[0]) lines.push(`Out front: ${shortName(out[0].name)} at ${f.at(out[0].km)}${total ? ' of ' + f.dist(total) : ''}.`);
+  if (out[0]) lines.push(sharesPosition(out[0]) ? `Out front: ${shortName(out[0].name)} at ${f.at(out[0].km)}${total ? ' of ' + f.dist(total) : ''}.` : `Out front: ${shortName(out[0].name)}, on the course.`);
   if (leaders.length) lines.push('Leaders on the public map: ' + leaders.map((x) => x.name + (x.finished ? ' (finished, ' + x.finished + ')' : ' (' + x.where + ')')).join(', ') + '.');
   const url = app === 'windline' ? `${SITE.windline}/live/race/${encodeURIComponent(e.id)}` : `${SITE.runfast}/live/race/${encodeURIComponent(e.id)}`;
   lines.push(`\nWatch the race live: ${url}`);

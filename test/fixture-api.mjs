@@ -38,20 +38,21 @@ function field(seed, n, extra) {
   return out;
 }
 const RUN = field(4101, 400, MEGANS.map((s, i) => ({ name: 'Megan ' + s, pid: 'pfixmeg' + String(i).padStart(4, '0') })));
-RUN[5] = { ...RUN[5], handle: 'megan', goal: 9 * 3600, r: 0.42, r3: 0.6 }; // Megan Naidoo: livedot.me/megan, going for a sub-9 (Bill Rowan)
+RUN[5] = { ...RUN[5], handle: 'megan', goal: 9 * 3600, r: 0.42, r3: 0.6 };
+RUN[0] = { ...RUN[0], name: 'Lerato Fast', pace: 245, r3: 0.5, nearEnd: true }; // out front, 400 m from the finish: the feed hides where (hide the ends), as the real one does // Megan Naidoo: livedot.me/megan, going for a sub-9 (Bill Rowan)
 const RIDE = field(5203, 150, [{ name: 'Thandi Mokoena', pid: 'pfixthandi', handle: 'thandi', goal: 6.5 * 3600 }]);
 
 const gun = (now, hoursIn) => Math.floor((now - hoursIn * HOUR) / 6e4) * 6e4;
 /** A RunFast runner's Live, now. */
 function runner(x, now) {
-  const g = gun(now, 6.1), pace = 300 + Math.round(x.r * 190), el = (now - g) / 1000, goal = x.goal || (x.r2 < 0.35 ? Math.round((pace - 15) * 90.3 / 600) * 600 : null);
+  const g = gun(now, 6.1), pace = x.pace || 300 + Math.round(x.r * 190), el = (now - g) / 1000, goal = x.goal || (x.r2 < 0.35 ? Math.round((pace - 15) * 90.3 / 600) * 600 : null);
   let status = x.r3 < 0.03 ? 'stopped' : x.r3 < 0.06 ? 'paused' : x.r3 < 0.08 ? 'nosignal' : 'live';
-  let km = Math.min(CR.total, el / pace); if (status === 'stopped') km *= 0.7;
+  let km = x.nearEnd ? CR.total - 0.4 : Math.min(CR.total, el / pace); if (status === 'stopped') km *= 0.7;
   const finished = km >= CR.total - 0.05; if (finished) status = 'finished';
   const ll = CR.at(km), fin = finished ? g + CR.total * pace * 1000 : g + (goal ? goal * 1000 + (el - km * goal / CR.total) * 1000 : CR.total * pace * 1000);
   const v = { pid: x.pid, name: x.name, photo: null, status, race: { id: 'comrades-preview', name: 'Comrades (preview)' }, run: null, km: +km.toFixed(3), total: +CR.total.toFixed(1), started: g, goal, tagline: null,
     pace: status === 'live' ? pace : null, plan: { start: new Date(g).toISOString(), pace }, finish: status === 'stopped' ? null : fin, next: null,
-    last: status === 'stopped' ? null : { lat: ll[0], lon: ll[1], t: now - 20e3 }, line: [], seen: now - 20e3,
+    last: status === 'stopped' || km < 1 || CR.total - km < 1 ? null : { lat: ll[0], lon: ll[1], t: now - 20e3 }, line: [], seen: now - 20e3, // hidden near the start and finish
     ghost: goal ? (() => { const gk = Math.min(CR.total, el * CR.total / goal), p = CR.at(gk); return { lat: p[0], lon: p[1], km: +gk.toFixed(3), diff: Math.round(el - km * goal / CR.total) }; })() : null,
     taps: { on: true, count: Math.round(x.r2 * 60), open: true } };
   return v;

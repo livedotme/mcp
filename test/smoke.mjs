@@ -144,6 +144,12 @@ try {
     const pr = await O.protectedResource(req).json(); assert.equal(pr.resource, 'https://livedot.me/mcp'); assert.deepEqual(pr.authorization_servers, ['https://livedot.me']);
     const as = await O.authorizationServer(req).json(); assert.equal(as.issuer, 'https://livedot.me'); assert.deepEqual(as.code_challenge_methods_supported, ['S256']); assert.equal(as.registration_endpoint, 'https://livedot.me/oauth/register');
   });
+  await test('event_status: a leader whose position is hidden (near the finish) shows with no km (KPMG C2)', async () => {
+    const r = await call('event_status', { event: 'Comrades' }), t = r.content[0].text, s = r.structuredContent, lf = s.leaders.find((x) => x.name === 'Lerato F.');
+    assert.ok(lf, 'the leader is listed'); assert.equal(lf.km, null); assert.equal(lf.where, 'on the course');
+    assert.match(t, /Out front: Lerato F\., on the course\./); assert.ok(!/Lerato F\. \((km|mile)/.test(t));
+    const v = r._meta['livedot/view']; assert.ok(v.leaders.find((x) => x.k === 'Lerato F.').v === 'on the course');
+  });
   await test('nobody: an honest answer with the findable rule', async () => {
     const r = await call('find_person', { name_or_handle: 'Zebedee Quux' }); assert.match(r.content[0].text, /findable/); assert.match(r.content[0].text, SPONSOR);
     const h = await call('where_is', { handle: 'nobody-here' }); assert.match(h.content[0].text, /no one at livedot\.me\/nobody-here/);
