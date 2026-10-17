@@ -18,6 +18,8 @@ const TOOLS = [
   ['fly_route', 'A flyover of the course in the chat, coloured by the weather along it, with Fly it in 3D.'],
   ['tour_route', 'A Windline cycling tour, day by day, with the weather, and a GPX link for each day when the organiser shares route files.'],
   ['tour_notes', 'Beta: a tour organiser’s own notes for riders (what to pack, meeting points), quoted in their words.'],
+  ['plan_route', 'The weather along your own route (a GPX file or a Ride with GPS link) at the time you’ll ride or run it.'],
+  ['create_event', 'Organisers, signed in with Windline or RunFast: a draft event from your GPX files. Also list_my_events, update_event, add_tour_notes, publish_event (only when you confirm) and post_club_ride.'],
 ];
 
 export function landing(host, sponsorName = 'ProLend') {
@@ -125,6 +127,7 @@ footer .sp{color:var(--ink);font-weight:600;margin:0 0 14px}footer nav a{margin:
   <div><b>One forecast engine</b><p>The weather comes from Windline’s engine, the same as the apps and every livedot page, so the numbers match everywhere: Apple Weather for the next 10 days, 10 years of Copernicus ERA5 records beyond.</p></div>
   <div><b>Live, from the apps</b><p>Positions, goals and finish times come from Windline (cycling) and RunFast (running), the same public live pages anyone can open.</p></div>
   <div><b>Private by design</b><p>Only people who chose to be findable, on public races. No position when someone’s stopped or near the start or finish, and nothing kept about who asked.</p></div>
+  <div><b>Your events, your say</b><p>Organisers sign in on Windline or RunFast with the sign-in they already use. New events are drafts, nothing is published until you confirm, finished events never change, and Disconnect in your account stops it at once.</p></div>
 </div></section>
 </main>
 <footer><div class="wrap">

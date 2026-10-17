@@ -11,8 +11,9 @@ import { handle } from '../src/server.js';
 const DIR = path.dirname(fileURLToPath(import.meta.url)), PORT = 8790 + Math.floor(Math.random() * 100);
 const fx = spawn(process.execPath, [path.join(DIR, 'fixture-api.mjs')], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((ok) => fx.stdout.once('data', ok));
-const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `http://localhost:${PORT}/runfast` }, SHOW = process.argv.includes('--show');
+const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `http://localhost:${PORT}/runfast`, MCP_AUTH_API: `http://localhost:${PORT}/windline/api/mcp` }, SHOW = process.argv.includes('--show');
 let n = 0;
+const postRaw = (body, h = {}) => handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env);
 const post = async (body, h = {}) => { const r = await handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env); return { status: r.status, body: r.status === 202 ? null : await r.json() }; };
 const call = async (name, args, meta) => { const r = await post({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args, ...(meta ? { _meta: meta } : {}) } }); assert.equal(r.status, 200); assert.ok(r.body.result, JSON.stringify(r.body)); const t = r.body.result.content[0].text; if (SHOW) console.log(`\n--- ${name} ${JSON.stringify(args)}${meta ? ' ' + JSON.stringify(meta) : ''}\n${t}`); return r.body.result; };
 const SPONSOR = /Live tracking, proudly brought to you free thanks to \w+\.$/;
@@ -24,8 +25,8 @@ try {
     assert.equal(i.body.result.protocolVersion, '2025-06-18'); assert.equal(i.body.result.serverInfo.title, 'livedot MCP');
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
-    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes']);
-    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => x.name !== 'tour_notes').forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
+    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride']);
+    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
     const b = await post([{ jsonrpc: '2.0', id: 4, method: 'ping' }, { jsonrpc: '2.0', method: 'notifications/initialized' }]); assert.equal(b.body.length, 1);
@@ -110,6 +111,38 @@ try {
   });
   await test('event_weather: an event livedot hasn\'t got', async () => {
     const r = await call('event_weather', { event: 'Tour de Nowhere' }); assert.match(r.content[0].text, /don't have/);
+  });
+  await test('sign-in: write tools need an account; read tools and plan_route don’t', async () => {
+    const t = (await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body.result.tools;
+    assert.equal(t.length, 14); const by = Object.fromEntries(t.map((x) => [x.name, x]));
+    ['find_person', 'where_is', 'plan_route'].forEach((n) => assert.equal(by[n].securitySchemes[0].type, 'noauth'));
+    assert.deepEqual(by.create_event.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.equal(by.publish_event.annotations.destructiveHint, true); assert.equal(by.list_my_events.annotations.readOnlyHint, true);
+    assert.match(by.publish_event.description, /ALWAYS ask the user to confirm/);
+    const r = await postRaw({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'create_event', arguments: { type: 'tour', name: 'x' } } });
+    assert.equal(r.status, 401); assert.match(r.headers.get('WWW-Authenticate'), /resource_metadata="https:\/\/livedot\.me\/\.well-known\/oauth-protected-resource\/mcp", scope="events\.write"/);
+    const c = await call('list_my_events', {}, { 'openai/locale': 'en-ZA' }); assert.equal(c.isError, true); assert.match(c._meta['mcp/www_authenticate'][0], /scope="events\.read"/);
+  });
+  await test('a signed-in write: the routes read, the time zone from where it starts, the token passed on, the sponsor line', async () => {
+    const gpx = `<gpx><trk><trkseg>${Array.from({ length: 40 }, (_, i) => `<trkpt lat="${(-33.92 + i * 0.002).toFixed(4)}" lon="${(18.42 + i * 0.002).toFixed(4)}"></trkpt>`).join('')}</trkseg></trk></gpx>`;
+    const r = await postRaw({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'create_event', arguments: { type: 'tour', name: 'Cape Coast', days: [{ gpx, start: '2027-03-06 06:00' }, { gpx, start: '2027-03-07 06:30' }] } } }, { Authorization: 'Bearer good-token' });
+    const j = await r.json(); assert.equal(r.status, 200); assert.match(j.result.content[0].text, /^Did create_event\./); assert.match(j.result.content[0].text, SPONSOR);
+    const seen = await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json(), a = seen[seen.length - 1].args;
+    assert.equal(a.tz, 'Africa/Johannesburg'); assert.equal(a.days.length, 2); assert.equal(a.days[0].start, '2027-03-06T04:00:00.000Z'); assert.equal(a.days[1].start, '2027-03-07T04:30:00.000Z'); assert.equal(a.days[0].pts.length, 40);
+    const bad = await postRaw({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'list_my_events', arguments: {} } }, { Authorization: 'Bearer expired' });
+    assert.equal(bad.status, 401); assert.match(bad.headers.get('WWW-Authenticate'), /error="invalid_token"/);
+    const pub = await postRaw({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'publish_event', arguments: { event_id: 'ev1', confirm: true } } }, { Authorization: 'Bearer good-token' });
+    const pj = await pub.json(); const last = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop(); assert.equal(last.args.id, 'ev1'); assert.equal(last.args.event_id, 'ev1'); assert.ok(pj.result);
+  });
+  await test('plan_route: no account, the weather along a pasted route at its time, with the map', async () => {
+    const gpx = `<gpx><trk><trkseg>${Array.from({ length: 60 }, (_, i) => `<trkpt lat="${(-29.75 + i * 0.004).toFixed(4)}" lon="${(30.5 + i * 0.006).toFixed(4)}"></trkpt>`).join('')}</trkseg></trk></gpx>`;
+    const start = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10) + ' 06:00';
+    const r = await call('plan_route', { gpx, start, sport: 'run' }); assert.equal(r.structuredContent.view, 'plan_route'); assert.equal(r.structuredContent.tz, 'Africa/Johannesburg'); assert.match(r.content[0].text, /Forecast from Apple Weather/); assert.ok(r._meta['livedot/view'].course.length > 10); assert.match(r.content[0].text, SPONSOR);
+    const s = await call('plan_route', { url: 'https://www.strava.com/routes/1', start }); assert.equal(s.isError, true); assert.match(s.content[0].text, /Strava/);
+  });
+  await test('OAuth metadata (RFC 9728, RFC 8414)', async () => {
+    const O = await import('../src/oauth.js'), req = new Request('https://livedot.me/.well-known/oauth-protected-resource/mcp');
+    const pr = await O.protectedResource(req).json(); assert.equal(pr.resource, 'https://livedot.me/mcp'); assert.deepEqual(pr.authorization_servers, ['https://livedot.me']);
+    const as = await O.authorizationServer(req).json(); assert.equal(as.issuer, 'https://livedot.me'); assert.deepEqual(as.code_challenge_methods_supported, ['S256']); assert.equal(as.registration_endpoint, 'https://livedot.me/oauth/register');
   });
   await test('nobody: an honest answer with the findable rule', async () => {
     const r = await call('find_person', { name_or_handle: 'Zebedee Quux' }); assert.match(r.content[0].text, /findable/); assert.match(r.content[0].text, SPONSOR);

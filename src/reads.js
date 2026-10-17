@@ -14,6 +14,7 @@ export function hosts(env = {}) {
     windline: (env.WINDLINE_API || SITE.windline) + '/api',
     runfast: (env.RUNFAST_API || SITE.runfast) + '/api',
     forecast: env.FORECAST_API || 'https://windline.tech/api/forecast', // Windline's forecast store (Apple Weather), as both follow pages ask it
+    mcp: env.MCP_AUTH_API || 'https://windline.tech/api/mcp', // livedot MCP's sign-in, route reader and write tools (Windline's mcpApi)
   };
 }
 

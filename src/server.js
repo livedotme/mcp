@@ -7,6 +7,8 @@ import { findPerson, whereIs, eventStatus, eventWeatherTool, flyRouteTool, tourR
 import { WIDGET_HTML } from './gen/widget.js';
 import { WL_VERSION } from './gen/engine.js';
 import { landing } from './landing.js';
+import { WRITE_TOOLS, SCOPE, NeedAuth, planRoute, writeTool, RESOURCE_META as PRM_URL } from './writes.js';
+import { sponsorLineFor } from './tools.js';
 
 export const VERSION = '1.0.0';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -131,6 +133,11 @@ export const TOOLS = [
   },
 ];
 
+// Read tools need no account; the write tools sign in (OAuth 2.1, writes.js). ChatGPT reads securitySchemes per tool.
+TOOLS.forEach((t) => { t.securitySchemes = [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; });
+TOOLS.push(...WRITE_TOOLS);
+{ const pr = TOOLS.find((t) => t.name === 'plan_route'); pr._meta = { ...uiMeta('Reading your route…', 'Weather ready'), ...pr._meta }; } // plan_route draws the weather map
+
 const RESOURCE = {
   uri: WIDGET_URI, name: 'livedot live map', title: 'livedot live map', mimeType: 'text/html;profile=mcp-app',
   description: 'The live map: the course, where they are, the wind and heat on the road ahead, and Follow live.',
@@ -147,23 +154,32 @@ const RESOURCE_META = {
 
 const INSTRUCTIONS = 'livedot answers where people are in live cycling (Windline) and running (RunFast) races, with the weather where they are from Windline\'s forecast engine. '
   + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours. When a name matches several people, ask one short question and never guess. '
-  + 'Only public data: findable people on public races.';
+  + 'Only public data: findable people on public races. plan_route needs no account. Organisers and club admins can sign in with their Windline or RunFast account (OAuth) to list, create and change their own events: new events are drafts, nothing is published without the user confirming, and finished events never change.';
 
 const ok = (id, result) => ({ jsonrpc: '2.0', id, result });
 const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id, error: { code, message } });
 
-async function call(name, args, meta, env) {
-  const R = reads(env), now = Date.now(), ctx = { R, now, f0: (tz) => unitsFor(args.units, meta, tz) };
+async function call(name, args, meta, env, rq = {}) {
+  const R = reads(env), now = Date.now(), ctx = { R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
   const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool }[name];
-  if (!fn) return null;
-  const out = await fn(ctx, args || {});
+  let out;
+  try {
+    if (fn) out = await fn(ctx, args || {});
+    else if (name === 'plan_route') out = await planRoute(ctx, args || {}, await sponsorLineFor(R));
+    else if (SCOPE[name]) out = await writeTool(ctx, name, args || {}, await sponsorLineFor(R));
+    else return null;
+  } catch (e) {
+    if (e instanceof NeedAuth) throw e;
+    if (e && e.status) return { isError: true, content: [{ type: 'text', text: e.message + '\n\n' + (await sponsorLineFor(R)) }], structuredContent: { view: 'none', error: e.message } };
+    throw e;
+  }
   const res = { content: [{ type: 'text', text: out.text }], structuredContent: out.structured || {} };
   if (out.map) res._meta = { 'livedot/view': out.map };
   return res;
 }
 
 /** One JSON-RPC message → a response object, or null for a notification. */
-export async function rpc(msg, env = {}) {
+export async function rpc(msg, env = {}, rq = {}) {
   if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return err(msg && msg.id, -32600, 'Invalid Request');
   const { id, method, params = {} } = msg, note = id === undefined || id === null;
   try {
@@ -180,7 +196,16 @@ export async function rpc(msg, env = {}) {
         const t = TOOLS.find((x) => x.name === params.name);
         if (!t) return err(id, -32602, 'Unknown tool: ' + params.name);
         const a = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
-        const res = await call(params.name, a, params._meta || {}, env);
+        let res;
+        try { res = await call(params.name, a, params._meta || {}, env, rq); }
+        catch (e) {
+          if (!(e instanceof NeedAuth)) throw e;
+          const challenge = `Bearer resource_metadata="${rq.prm || PRM_URL}", scope="${e.scope}"${e.error ? `, error="${e.error}"` : ''}`;
+          // ChatGPT starts its sign-in from a tool result that carries the challenge; other clients from HTTP 401 (MCP authorization)
+          const chatgpt = Object.keys(params._meta || {}).some((k) => k.startsWith('openai/')) || /openai|chatgpt/i.test(rq.ua || '');
+          if (chatgpt) return ok(id, { isError: true, content: [{ type: 'text', text: 'Sign in to your Windline or RunFast account to do this.' }], _meta: { 'mcp/www_authenticate': [challenge] } });
+          throw Object.assign(e, { challenge, id });
+        }
         return ok(id, res);
       }
       case 'resources/list': return ok(id, { resources: [{ ...RESOURCE, _meta: RESOURCE_META }] });
@@ -195,6 +220,7 @@ export async function rpc(msg, env = {}) {
         return note ? null : err(id, -32601, 'Method not found: ' + method);
     }
   } catch (e) {
+    if (e instanceof NeedAuth) throw e;
     return note ? null : ok(id, { isError: true, content: [{ type: 'text', text: 'livedot couldn\'t answer just now. Try again in a moment.' }] });
   }
 }
@@ -202,7 +228,7 @@ export async function rpc(msg, env = {}) {
 const CORS = {
   'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Accept, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID, Authorization',
-  'Access-Control-Expose-Headers': 'Mcp-Session-Id, Mcp-Protocol-Version', 'Access-Control-Max-Age': '86400',
+  'Access-Control-Expose-Headers': 'Mcp-Session-Id, Mcp-Protocol-Version, WWW-Authenticate', 'Access-Control-Max-Age': '86400',
 };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', ...CORS } });
 
@@ -221,12 +247,17 @@ export async function handle(request, env = {}) {
   }
   if (request.method === 'DELETE') return new Response(null, { status: 405, headers: { Allow: 'POST', ...CORS } });
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST, GET', ...CORS } });
-  let body; try { const t = await request.text(); if (t.length > 64 * 1024) return json(err(null, -32600, 'Too large'), 413); body = JSON.parse(t); } catch (e) { return json(err(null, -32700, 'Parse error'), 400); }
+  let body; try { const t = await request.text(); if (t.length > 6e6) return json(err(null, -32600, 'Too large: a GPX file can be up to 5 MB'), 413); body = JSON.parse(t); } catch (e) { return json(err(null, -32700, 'Parse error'), 400); }
+  // who's asking: their token (passed on to the app's server, never kept here), and their own address for the route reader's limit
+  const ip = request.headers.get('CF-Connecting-IP') || '';
+  const rq = { prm: env.MCP_ISSUER ? `${env.MCP_ISSUER}/.well-known/oauth-protected-resource/mcp` : null, authorization: /^Bearer\s+\S+$/.test(request.headers.get('Authorization') || '') ? request.headers.get('Authorization') : null, ua: request.headers.get('User-Agent') || '',
+    proxy: env.MCP_PROXY_SECRET && ip ? { 'X-Livedot-Proxy': env.MCP_PROXY_SECRET, 'X-Livedot-Client-Ip': ip } : null };
+  const unauthorized = (e) => new Response(JSON.stringify(err(e.id, -32001, e.message)), { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'WWW-Authenticate': e.challenge, ...CORS, 'Access-Control-Expose-Headers': 'WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version' } });
   if (Array.isArray(body)) {
     if (!body.length || body.length > 10) return json(err(null, -32600, 'Invalid Request'), 400);
-    const out = (await Promise.all(body.map((m) => rpc(m, env)))).filter(Boolean);
-    return out.length ? json(out) : new Response(null, { status: 202, headers: CORS });
+    try { const out = (await Promise.all(body.map((m) => rpc(m, env, rq)))).filter(Boolean); return out.length ? json(out) : new Response(null, { status: 202, headers: CORS }); }
+    catch (e) { if (e instanceof NeedAuth) return unauthorized(e); throw e; }
   }
-  const out = await rpc(body, env);
-  return out ? json(out) : new Response(null, { status: 202, headers: CORS });
+  try { const out = await rpc(body, env, rq); return out ? json(out) : new Response(null, { status: 202, headers: CORS }); }
+  catch (e) { if (e instanceof NeedAuth) return unauthorized(e); throw e; }
 }

@@ -87,7 +87,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 
 <img src="docs/shots/tour-route-widget.png" width="640" alt="A cycling tour's days on a map, each rated for the weather, with a Route files button">
 
-**More to try:** *“How’s the Coast Classic demo going?”* · *“Is Thandi racing?”* · *“Weather for the Gravel Burn?”* · *“What should I pack for the Durban tour?”*
+**More to try:** *“How’s the Coast Classic demo going?”* · *“Is Thandi racing?”* · *“Weather for the Gravel Burn?”* · *“What should I pack for the Durban tour?”* · *“What will the wind be like on this route on Saturday at 6?”* (attach a GPX) · signed in: *“Make my Saturday bunch ride a weekly club ride from this route.”*
 
 ## Tools
 
@@ -101,6 +101,25 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. A GPX link for each day only when the organiser shares route files; otherwise it says so. |
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
+| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. No account. |
+
+### For organisers and club admins (sign in)
+
+Connect your **Windline** or **RunFast** account and the assistant can work on your own events, exactly as your dashboard lets you:
+
+| Tool | Scope | What it does |
+|---|---|---|
+| `list_my_events` | events.read | Your events: drafts and published, dates, distance, finished or not, with links. |
+| `create_event` | events.write | A **draft** ride, tour or race (Windline) or run or race (RunFast) from GPX files or links. Not public until you publish it. |
+| `update_event` | events.write | Name, description, notes, start dates and times. Never a finished event. |
+| `add_tour_notes` | events.write | A Windline tour's notes for riders (what to pack, meeting points). |
+| `publish_event` | events.publish | Publishes a draft, only after you confirm. Private events stay private. |
+| `post_club_ride` | clubs.post | A draft group ride or club run on a club or organiser page you run. |
+
+> “Make a two-day tour from these GPX files, starting 6 March at 6:00.” → a draft on your dashboard, with the weather for both days.
+
+**How sign-in works.** OAuth 2.1 with PKCE and dynamic client registration, following the MCP authorization spec. livedot.me is the issuer (`/.well-known/oauth-protected-resource`, `/.well-known/oauth-authorization-server`) and passes `/oauth/*` to the authorization server, which runs on Windline (its Firestore holds the clients and the hashed tokens, server-only). You choose Windline or RunFast, then sign in on that app's own site (`windline.tech/livedot/` or `runfast.tech/livedot/`) with the sign-in you already use (Apple, Google or email), so nothing about your password ever reaches livedot or the assistant. Access tokens last 15 minutes and refresh tokens 30 days, rotated on every use. Disconnect any time from **Account → AI assistants** in Windline or RunFast: it stops at once. Read tools and `plan_route` never need an account.
+
 Every tool takes `units`: `metric` or `imperial`. Without it, the asker's region decides (ChatGPT sends it); with neither, the event's country leads and the other system follows in brackets: “km 79 (mile 49)”. All tools are read-only (`readOnlyHint`).
 
 ## How it works
@@ -109,7 +128,7 @@ Every tool takes `units`: `metric` or `imperial`. Without it, the asker's region
 - **One forecast engine.** Weather by the Windline engine, served from livedot.me: the same engine as the apps and every livedot page, so the numbers match everywhere. Apple Weather for the next 10 days; 10 years of Copernicus ERA5 records beyond. The engine is Windline's and isn't in this repository or under its licence: `scripts/build.mjs` fetches it from `windline.tech/engine-core.js` when the server is built.
 - **A map in the chat.** One [MCP Apps](https://modelcontextprotocol.io) UI resource (`ui://livedot/live-map.html`) that Claude and ChatGPT render inline: always a light map (OpenFreeMap), never a per-tile map key. Clients without widgets get the full answer as text.
 
-**Privacy.** Only people who chose to be findable, on public races; no position when someone has stopped or is near the start or finish; names as “Megan N.”; nothing kept about who asked.
+**Privacy.** Only people who chose to be findable, on public races; the organiser tools only ever touch the signed-in person's own events; no position when someone has stopped or is near the start or finish; names as “Megan N.”; nothing kept about who asked.
 
 ## For the auditor
 

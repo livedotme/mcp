@@ -125,7 +125,27 @@ function route(app, p, q, now) {
   return [404, { error: 'Not found' }];
 }
 
+// livedot MCP's sign-in tools, stood in for (the real ones: Windline's mcpApi, tested on the emulators there): the route reader reads
+// trkpt points; a tool answers only to the token "good-token" and says back what it got.
+function mcpStub(req, res, p, raw) {
+  const j = (code, b) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(b)); };
+  let b = {}; try { b = JSON.parse(raw || '{}'); } catch (e) { b = {}; }
+  if (p === '/route') {
+    if (b.url && /strava/.test(b.url)) return j(400, { ok: false, error: 'Strava only shares a route with the account that made it.' });
+    const pts = [...String(b.gpx || '').matchAll(/<trkpt lat="([-\d.]+)" lon="([-\d.]+)"/g)].map((m) => [+m[1], +m[2], null]);
+    if (pts.length < 2) return j(400, { ok: false, error: 'That file has no route in it.' });
+    let km = 0; for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], c = pts[i], r = Math.PI / 180, h = Math.sin((c[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(c[0] * r) * Math.sin((c[1] - a[1]) * r / 2) ** 2; km += 12742 * Math.asin(Math.sqrt(h)); }
+    return j(200, { ok: true, routes: [{ name: 'Test loop', from: '', to: '', km: Math.round(km * 10) / 10, climb: 0, pts }] });
+  }
+  const m = p.match(/^\/tool\/(\w+)$/);
+  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1' } }); }
+  return j(404, { ok: false, error: 'Not found' });
+}
+export const MCP_SEEN = [];
 http.createServer((req, res) => {
+  const um = new URL(req.url, 'http://x');
+  if (um.pathname.startsWith('/windline/api/mcp/')) { let raw = ''; req.on('data', (c) => (raw += c)); req.on('end', () => mcpStub(req, res, um.pathname.replace('/windline/api/mcp', ''), raw)); return; }
+  if (um.pathname === '/mcp-seen') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(MCP_SEEN)); }
   const u = new URL(req.url, 'http://x'), m = u.pathname.match(/^\/(windline|runfast)\/api(\/.*?)\/?$/), now = Date.now();
   const [code, body] = m ? route(m[1], m[2], Object.fromEntries(u.searchParams), now) : [404, { error: 'Not found' }];
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body));

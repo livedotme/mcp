@@ -3,3 +3,4 @@ node_modules/
 docs/shots/*.full.png
 # Windline's forecast engine: fetched at build time from windline.tech/engine-core.js (scripts/build.mjs), never committed here
 src/gen/engine.js
+src/gen/tzlookup.js

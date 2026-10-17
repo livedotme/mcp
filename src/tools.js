@@ -382,3 +382,5 @@ export async function eventWeatherTool(ctx, args) { return eventWeather(ctx, arg
 export async function flyRouteTool(ctx, args) { return flyRoute(ctx, args, sponsorLine(await sponsorName(ctx.R))); }
 export async function tourRouteTool(ctx, args) { return tourRoute(ctx, args, sponsorLine(await sponsorName(ctx.R))); }
 export async function tourNotesTool(ctx, args) { return tourNotes(ctx, args, sponsorLine(await sponsorName(ctx.R))); }
+/** The sponsor line, for livedot MCP's other tools (writes.js). */
+export async function sponsorLineFor(R) { return sponsorLine(await sponsorName(R)); }
