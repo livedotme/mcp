@@ -74,6 +74,14 @@ html,body{margin:0;background:transparent;color:var(--ink);font:400 15px/1.5 var
 .ft{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:14px 16px 16px;border-top:1px solid var(--line)}
 .btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 16px;border-radius:10px;background:var(--navy);color:#fff;font:600 14px/1 var(--font);box-shadow:0 1px 2px rgba(11,27,43,.2)}
 :root[data-theme="dark"] .btn{background:#fff;color:#0B1B2B}
+/* the app's own colour on the primary button (Windline's violet, RunFast's blue), and the brand lockup: livedot, on the app */
+body{--appc:#635BFF}body.app-runfast{--appc:#3358F4}.btn.appbtn,:root[data-theme="dark"] .btn.appbtn{background:var(--appc);color:#fff}
+.brandbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 18px 0;color:var(--muted);font:600 12px/1 var(--font)}
+.brandbar .ld{display:inline-flex;align-items:center;gap:6px;color:var(--ink);font:800 14px/1 var(--font);letter-spacing:-.025em}.brandbar .ld svg{width:18px;height:18px}
+.brandbar .on{display:inline-flex;align-items:center;gap:6px}.brandbar .on svg{width:18px;height:18px;border-radius:5px;flex:none}.brandbar .on b{color:var(--ink);font-weight:700}
+.headline small.live{color:#0A7A54}
+.aw{all:unset;cursor:pointer;display:inline-flex;align-items:center;vertical-align:middle}.aw img{height:13px;width:auto;display:block}.aw .dk{display:none}:root[data-theme="dark"] .aw .lt{display:none}:root[data-theme="dark"] .aw .dk{display:block}
+.sp .spl{all:unset;cursor:pointer;color:inherit;text-decoration:underline;text-underline-offset:2px}.sp .spl:hover{color:var(--ink)}
 .btn:hover{filter:brightness(1.12)}.btn:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .btn i{width:8px;height:8px;border-radius:50%;background:var(--live)}
 .meta{color:var(--muted);font-size:12px;line-height:1.4;flex:1;min-width:180px}
@@ -89,6 +97,9 @@ ul.rows{list-style:none;margin:0;padding:0 8px 8px;max-height:340px;overflow:aut
 .row{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:12px;width:100%;padding:9px 10px;border-radius:10px}
 .row:hover,.row:focus-visible{background:var(--hover)}.row:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .av{width:34px;height:34px;flex:none;border-radius:50%;display:grid;place-items:center;font:800 13px/1 var(--font);color:#fff;background:var(--acc)}
+.av{position:relative;overflow:hidden}.av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:50%;background:var(--soft)}
+.hd .av{width:34px;height:34px}
+.tapbtn[disabled]{opacity:.75;cursor:default;filter:none}.tapwhy{flex-basis:100%;margin:0;color:var(--muted);font-size:12.5px}
 .row .mid{min-width:0;flex:1}.row b{display:block;font:600 15px/1.25 var(--font)}.row .sub{display:block;color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row .chev{color:var(--faint);flex:none}.row.busy{opacity:.55;pointer-events:none}
 .why{margin:0;padding:12px 16px;color:var(--body);font-size:14px;border-bottom:1px solid var(--line)}
@@ -128,8 +139,20 @@ function seps(el) {
   });
   return el;
 }
+/** A person's avatar: their profile picture (from the apps' own hosts), with their initials underneath for when it doesn't load. */
+function initialsOf(n) { return String(n || '').replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0] || ''; }).join('').slice(0, 2).toUpperCase(); }
+function avatarOf(name, photo, bg, inner) {
+  return '<span class="av"' + (bg ? ' style="background:' + bg + '"' : '') + '>' + esc(inner != null ? inner : initialsOf(name)) + (photo && /^https:\/\/(windline|runfast)\.tech\//.test(photo) ? '<img src="' + esc(photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
+}
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 var MARK = '<svg class="mark" viewBox="20 20 60 60" aria-hidden="true"><circle cx="50" cy="50" r="26" fill="none" stroke="#2FD39B" stroke-width="5" stroke-linecap="round" stroke-dasharray="128 35.4" transform="rotate(-20 50 50)" opacity=".55"/><circle cx="50" cy="50" r="13" fill="#2FD39B"/></svg>';
+// the apps' own icons (their favicons, inline: no image host needed), for the "on RunFast" / "on Windline" lockup
+var APP = {
+  windline: { name: 'Windline', logo: '<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#0A2540"/><g fill="none" stroke-width="5.6" stroke-linecap="round"><path d="M11 22C21 18 29 26 39 22C44 20 47 19 52 20" stroke="#8B85FF"/><path d="M11 33C21 29 29 37 39 33C46 30 54 31 54 37C54 42 47 43 46 39" stroke="#FFFFFF"/><path d="M11 44C19 41 25 47 33 44" stroke="#2BE0B4"/></g></svg>' },
+  runfast: { name: 'RunFast', logo: '<svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="10" fill="#0E1B26"/><rect x="9" y="21" width="4.6" height="10" rx="2.3" fill="#2FA884"/><rect x="17.7" y="15" width="4.6" height="16" rx="2.3" fill="#E8B21E"/><rect x="26.4" y="9" width="4.6" height="22" rx="2.3" fill="#D3344A"/></svg>' },
+};
+/** One lockup at the top of the person card and the race map: livedot on the left, the app the person or race is on, on the right. */
+function brandBar(v) { var a = APP[v.app]; return '<div class="brandbar"><span class="ld">' + MARK + 'livedot</span>' + (a ? '<span class="on">on ' + a.logo + '<b>' + a.name + '</b></span>' : '') + '</div>'; }
 var CHEV = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" class="chev"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var BACK = '<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var SEARCH = '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m10.5 10.5 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
@@ -150,8 +173,12 @@ function context(c) { if (c && c.theme) theme(c.theme); }
 function theme(t) { document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); }
 var host = {
   call: function (name, args) {
-    if (OA && OA.callTool) return Promise.resolve(OA.callTool(name, args)).then(function (r) { return r && (r._meta || r.structuredContent) ? r : { _meta: r && r.meta, structuredContent: r && r.structuredContent }; });
+    if (OA && typeof OA.callTool === 'function') return new Promise(function (ok) { ok(OA.callTool(name, args)); }).then(function (r) { return r && (r._meta || r.structuredContent) ? r : { _meta: r && r.meta, structuredContent: r && r.structuredContent }; });
     return request('tools/call', { name: name, arguments: args });
+  },
+  message: function (text) { // the fallback when the host can't call a tool from here: the words, as if the user said them
+    if (OA && typeof OA.sendFollowUpMessage === 'function') return new Promise(function (ok) { ok(OA.sendFollowUpMessage({ prompt: text })); });
+    return request('ui/message', { role: 'user', content: [{ type: 'text', text: text }] });
   },
   open: function (url) {
     if (OA && OA.openExternal) { try { return OA.openExternal({ href: url }); } catch (e) { /* fall through */ } }
@@ -164,46 +191,104 @@ var host = {
   }
 };
 function fromResult(r) { var v = r && r._meta && r._meta['livedot/view']; if (v) { STACK = []; show(v); } else if (r && r.content) message(r.content.map(function (c) { return c.text || ''; }).join('\n')); }
-if (OA) {
-  theme(OA.theme);
-  var pull = function () { var m = OA.toolResponseMetadata, v = m && m['livedot/view']; if (v && v !== V && !STACK.length) show(v); else if (!V && OA.toolOutput && OA.toolOutput.message) message(OA.toolOutput.message); theme(OA.theme); };
-  window.addEventListener('openai:set_globals', pull); pull();
-} else {
-  request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'livedot', version: '1.0.0' }, appCapabilities: {} })
-    .then(function (r) { ready = true; context(r && r.hostContext); notify('ui/notifications/initialized', {}); host.size(); })
-    .catch(function () { /* not in a host: the test page sets window.LD_VIEW */ });
-}
+// (the host starts the widget at the end of this script, once every function and value above and below is defined: boot())
 if (window.LD_VIEW) show(window.LD_VIEW);
 if ('ResizeObserver' in window) new ResizeObserver(function () { host.size(); }).observe(document.body);
 
 // ---------------------------------------------------------------- views
 function message(t) { root.innerHTML = '<div class="card"><div class="hd">' + MARK + '<div class="ttl"><b>livedot</b></div></div><p class="hint">' + esc(t).replace(/\n/g, '<br>') + '</p></div>'; seps(root); host.size(); }
-function show(v) {
+function show(v) { try { return draw(v); } catch (e) { V = v; fail(e); } }
+function draw(v) {
   V = v; seq++;
-  document.body.className = v.sport === 'run' || v.sport === 'running' ? 'run' : '';
+  document.body.className = (v.sport === 'run' || v.sport === 'running' ? 'run ' : '') + 'app-' + (v.app === 'runfast' || (!v.app && /^run/.test(String(v.sport || ''))) ? 'runfast' : 'windline');
+  stopLive();
   if (v.kind === 'picker') return picker(v);
   return mapView(v);
 }
-function head(title, sub, pill, back) {
-  return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
+function head(title, sub, pill, back, photo) {
+  return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : '') + (photo != null ? avatarOf(title, photo) : back ? '' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
 }
 var pillOf = function (v) { var live = /^(Live|No signal|Forecast)$/.test(v.statusWord); return '<span class="pill' + (live ? ' live' : '') + '">' + (live ? '<i></i>' : '') + esc(v.statusWord || '') + '</span>'; };
 
 function mapView(v) {
-  var back = STACK.length > 0, h = '<div class="card">' + head(v.name, v.kind === 'event' ? v.headline : v.race, pillOf(v), back);
+  var back = STACK.length > 0, branded = v.kind === 'person' || v.kind === 'event';
+  var h = '<div class="card">' + (branded ? brandBar(v) : '') + head(v.name, v.kind === 'event' ? v.headline : v.race, pillOf(v), back, v.kind === 'person' ? (v.photo || '') : null);
   var fly = v.kind === 'fly';
   h += '<div class="map' + (fly ? ' fly' : '') + '" id="map"><svg id="svg" aria-hidden="true"></svg><div id="gl"></div>'
     + (fly ? '<div class="hud" id="hud"><b class="num">' + esc(v.headline || '') + '</b><span id="hudw">' + esc(v.race || '') + '</span></div><div class="ctl"><button type="button" id="play">Play</button><button type="button" id="whole">Whole route</button></div>' : '')
-    + (v.headline && v.kind !== 'event' && !fly ? '<div class="headline num">' + esc(v.headline) + (v.updated ? '<small>' + esc(v.updated.split(' · ')[0]) + '</small>' : '') + '</div>' : '')
+    + (v.headline && v.kind !== 'event' && !fly ? '<div class="headline num" id="lv-head">' + headHtml(v) + '</div>' : '')
     + (v.key ? '<div class="key"><p>' + esc(v.keyTitle) + '</p><ul>' + v.key.map(function (k) { return '<li><i style="background:' + k[0] + '"></i>' + esc(k[1]) + '</li>'; }).join('') + '</ul></div>' : '') + '</div>';
-  if (v.stats && v.stats.length) h += '<div class="stats">' + v.stats.map(function (s) { return '<div class="stat ' + (s.tone || '') + '"><div class="k">' + esc(s.k) + '</div><div class="v num">' + esc(s.v) + '</div>' + (s.sub ? '<div class="s">' + esc(s.sub) + '</div>' : '') + '</div>'; }).join('') + '</div>';
+  if (v.stats && v.stats.length) h += '<div class="stats" id="lv-stats">' + statsHtml(v) + '</div>';
   if (v.why) h += '<p class="why">' + esc(v.why) + '</p>';
-  if (v.ahead && v.ahead.length) h += '<div class="sec"><h3>' + esc(v.aheadTitle || 'The road ahead') + '</h3></div><div class="ahead">' + v.ahead.map(function (a) { var inner = '<div class="k num">' + esc(a.k) + ' · ' + esc(a.at) + '</div><div class="v num">' + esc(a.v) + '</div><div class="s num">' + esc(a.sub) + '</div>' + (a.url ? '<div class="dl">GPX ↓</div>' : ''); return a.url ? '<button type="button" class="leg lk" data-open="' + esc(a.url) + '" style="--c:' + esc(a.c) + '">' + inner + '</button>' : '<div class="leg" style="--c:' + esc(a.c) + '">' + inner + '</div>'; }).join('') + '</div>';
-  if (v.leaders && v.leaders.length) h += '<div class="sec"><h3>Out front</h3></div><ul class="rows">' + v.leaders.map(function (l, i) { return '<li><div class="row" style="cursor:default"><span class="av num">' + (i + 1) + '</span><span class="mid"><b>' + esc(l.k) + '</b><span class="sub num">' + esc(l.v) + '</span></span></div></li>'; }).join('') + '</ul>';
-  h += '<div class="ft">' + (v.fly ? '<button class="btn" type="button" data-open="' + esc(v.fly.url) + '"><i></i>' + esc(v.fly.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.fly ? ' sec2' : '') + '" type="button" data-open="' + esc(v.follow.url) + '">' + (v.fly ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta">' + esc(v.updated || '') + '</span></div>';
+  h += '<div id="lv-ahead">' + aheadHtml(v) + '</div>';
+  h += '<div id="lv-leaders">' + leadersHtml(v) + '</div>';
+  h += '<div class="ft">' + (v.tap ? '<button class="btn tapbtn appbtn" type="button" id="tap">' + esc(v.tap.label) + '</button>' : '') + (v.fly ? '<button class="btn" type="button" data-open="' + esc(v.fly.url) + '"><i></i>' + esc(v.fly.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.fly || v.tap ? ' sec2' : branded ? ' appbtn' : '') + '" type="button" id="follow" data-open="' + esc(v.follow.url) + '">' + (v.fly || v.tap ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta" id="lv-meta">' + metaHtml(v) + '</span></div>';
   if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>'; // only without a sign-in: a free account, one line
-  h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
-  root.innerHTML = h; seps(root); wire(); drawSvg(v); drawGl(v, seq); host.size();
+  h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
+  root.innerHTML = h; seps(root); wire(); drawSvg(v); drawGl(v, seq); host.size(); startLive(v);
+}
+
+
+/** The line under the card: when the position and the forecast were updated, and whose weather it is (Apple's mark, linked to its
+ *  legal page, as WeatherKit asks; ERA5 history credits Copernicus). */
+function metaHtml(v) {
+  var t = String(v.updated || ''), legal = v.appleLegal || 'https://weatherkit.apple.com/legal-attribution.html';
+  var mark = '<button type="button" class="aw" data-open="' + esc(legal) + '" aria-label="Apple Weather: data sources"><img class="lt" src="https://weatherkit.apple.com/assets/branding/en/Apple_Weather_blk_en_3X_090122.png" alt="Apple Weather" height="13"><img class="dk" src="https://weatherkit.apple.com/assets/branding/en/Apple_Weather_wht_en_3X_090122.png" alt="" height="13"></button>';
+  if (/Apple Weather/.test(t)) return t.split(' · ').map(function (x) { return x === 'Apple Weather' ? mark : esc(x); }).join(' · ');
+  if (/Copernicus ERA5/.test(t)) return esc(t) + ' · Contains modified Copernicus Climate Change Service information';
+  return esc(t);
+}
+/** The sponsor line, its name a link to the sponsor (through the host). */
+function sponsorHtml(v) {
+  var t = String(v.sponsor || ''), n = v.sponsorName, u = v.sponsorUrl, i = n ? t.lastIndexOf(n) : -1;
+  return i < 0 || !/^https:\/\//.test(String(u || '')) ? esc(t) : esc(t.slice(0, i)) + '<button type="button" class="spl" data-open="' + esc(u) + '">' + esc(n) + '</button>' + esc(t.slice(i + n.length));
+}
+function headHtml(v) { return esc(v.headline) + (v.updated ? '<small id="lv-ago">' + esc(v.updated.split(' · ')[0]) + '</small>' : ''); }
+function statsHtml(v) { return (v.stats || []).map(function (s) { return '<div class="stat ' + (s.tone || '') + '"><div class="k">' + esc(s.k) + '</div><div class="v num">' + esc(s.v) + '</div>' + (s.sub ? '<div class="s">' + esc(s.sub) + '</div>' : '') + '</div>'; }).join(''); }
+function aheadHtml(v) {
+  return v.ahead && v.ahead.length ? '<div class="sec"><h3>' + esc(v.aheadTitle || 'The road ahead') + '</h3></div><div class="ahead">' + v.ahead.map(function (a) { var inner = '<div class="k num">' + esc(a.k) + ' · ' + esc(a.at) + '</div><div class="v num">' + esc(a.v) + '</div><div class="s num">' + esc(a.sub) + '</div>' + (a.url ? '<div class="dl">GPX ↓</div>' : ''); return a.url ? '<button type="button" class="leg lk" data-open="' + esc(a.url) + '" style="--c:' + esc(a.c) + '">' + inner + '</button>' : '<div class="leg" style="--c:' + esc(a.c) + '">' + inner + '</div>'; }).join('') + '</div>' : '';
+}
+function leadersHtml(v) {
+  return v.leaders && v.leaders.length ? '<div class="sec"><h3>Out front</h3></div><ul class="rows">' + v.leaders.map(function (l, i) { return '<li><div class="row" style="cursor:default">' + (l.photo ? avatarOf(l.k, l.photo) : '<span class="av num">' + (i + 1) + '</span>') + '<span class="mid"><b>' + (l.photo ? (i + 1) + ' · ' : '') + esc(l.k) + '</b><span class="sub num">' + esc(l.v) + '</span></span></div></li>'; }).join('') + '</ul>' : '';
+}
+
+// ---------------------------------------------------------------- live: the card keeps itself up to date (Wes, 17 Oct: "is this actually live?")
+// While a person's card or a race map is on screen and the tab is visible: the same tool again every 30 s (one call, never more), for
+// 30 minutes at most, until they finish. The numbers, the dot and the road ahead change in place; the map moves only if the dot leaves it.
+// A host that can't call tools from here: Watch live becomes the main button.
+var LIVE = null, CUR = null;
+function stopLive() { if (LIVE) { clearInterval(LIVE.timer); clearInterval(LIVE.tick); LIVE = null; } }
+function startLive(v) {
+  stopLive(); if (!v.refresh || v.status === 'finished' || /^(Finished|Stopped)$/.test(v.statusWord || '')) return;
+  LIVE = { tool: v.refresh.tool, args: v.refresh.args, until: Date.now() + 30 * 60e3, at: Date.now(), busy: false, seq: seq };
+  LIVE.timer = setInterval(pollLive, 30e3); LIVE.tick = setInterval(tickLive, 5e3);
+}
+function agoWords(ms) { var s = Math.round(ms / 1000); return s < 10 ? 'Updated just now' : s < 60 ? 'Updated ' + s + ' s ago' : 'Updated ' + Math.round(s / 60) + ' min ago'; }
+function tickLive() { var L = LIVE, el = document.getElementById('lv-ago'); if (!L || L.seq !== seq) return stopLive(); if (el) { el.textContent = agoWords(Date.now() - L.at); el.className = 'live'; } }
+function pollLive() {
+  var L = LIVE; if (!L || L.busy) return; if (L.seq !== seq || Date.now() > L.until) return stopLive(); if (document.visibilityState && document.visibilityState !== 'visible') return;
+  L.busy = true;
+  host.call(L.tool, L.args).then(function (r) {
+    L.busy = false; var nv = r && r._meta && r._meta['livedot/view']; if (!nv || LIVE !== L || !V || nv.kind !== V.kind) return;
+    L.at = Date.now(); updateLive(nv); tickLive(); if (nv.status === 'finished' || /^(Finished|Stopped)$/.test(nv.statusWord || '')) stopLive();
+  }).catch(function () { L.busy = false; stopLive(); noCalls(); });
+}
+function noCalls() { var f = document.getElementById('follow'); if (f) { f.classList.remove('sec2'); f.classList.add('appbtn'); } }
+function swap(id, html) { var el = document.getElementById(id); if (el) { el.innerHTML = html; seps(el); } }
+function updateLive(nv) {
+  var keepTap = V && V.tap; V = nv; if (keepTap && !nv.tap) V.tap = null;
+  swap('lv-stats', statsHtml(nv)); swap('lv-ahead', aheadHtml(nv)); swap('lv-leaders', leadersHtml(nv)); swap('lv-head', headHtml(nv)); wireImgs(document.getElementById('lv-leaders'));
+  var meta = document.getElementById('lv-meta'); if (meta) { meta.innerHTML = metaHtml(nv); wireOpen(meta); }
+  var pill = root.querySelector('.hd .pill'); if (pill) pill.outerHTML = pillOf(nv);
+  wireOpen(document.getElementById('lv-ahead'));
+  drawSvg(nv);
+  if (CUR && CUR.seq === seq) {
+    var map = CUR.map;
+    if (nv.dot && CUR.dot) { CUR.dot.setLngLat([nv.dot.lon, nv.dot.lat]); try { if (!map.getBounds().contains([nv.dot.lon, nv.dot.lat])) map.easeTo({ center: [nv.dot.lon, nv.dot.lat], duration: 600 }); } catch (e) { /* */ } }
+    if (nv.ghost && CUR.ghost) CUR.ghost.setLngLat([nv.ghost.lon, nv.ghost.lat]);
+    if (nv.dots) { CUR.dots.forEach(function (m) { m.remove(); }); CUR.dots = nv.dots.map(function (d) { return CUR.mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); }); }
+  }
+  host.size();
 }
 
 function picker(v) {
@@ -211,7 +296,7 @@ function picker(v) {
   h += '<div class="find"><label class="box">' + SEARCH + '<input id="q" type="search" autocomplete="off" placeholder="Narrow by surname or initial" aria-label="Narrow by surname or initial"><kbd>Enter</kbd></label></div>';
   h += '<ul class="rows" id="rows"></ul><p class="hint" id="hint">' + (v.rows.length < 20 ? 'Tap the person you mean.' : 'The ' + v.rows.length + ' most likely. Type a surname or initial to narrow it down.') + '</p>';
   if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>'; // only without a sign-in: a free account, one line
-  h += '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
+  h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
   root.innerHTML = h; seps(root); rows(v.rows); wire();
   var q = document.getElementById('q'), t = 0;
   q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { var s = q.value.trim().toLowerCase(); rows(v.rows.filter(function (r) { return !s || r.name.toLowerCase().split(/\s+/).some(function (w) { return w.indexOf(s) === 0; }); })); }, 80); });
@@ -228,13 +313,38 @@ function rows(list) {
   if (!list.length) { box.innerHTML = '<li class="empty">No one here by that name. Press Enter to search the whole race.</li>'; host.size(); return; }
   box.innerHTML = list.map(function (r) {
     var ini = r.name.replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2), sub = [r.where, r.pace, r.goal, r.extra].filter(Boolean).join(' · ') || (r.race || ''), live = /^(live|delayed|nosignal)$/.test(r.status);
-    return '<li><button class="row" type="button" data-id="' + esc(r.id) + '"><span class="av" style="background:' + (r.sport === 'running' ? 'var(--run)' : 'var(--cyc)') + '">' + esc(ini) + '</span><span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
+    return '<li><button class="row" type="button" data-id="' + esc(r.id) + '">' + avatarOf(r.name, r.photo, r.sport === 'running' ? 'var(--run)' : 'var(--cyc)', ini) + '<span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
       + (live ? '<span class="pill live"><i></i>Live</span>' : r.status ? '<span class="pill">' + esc({ paused: 'Paused', stopped: 'Stopped', finished: 'Finished', waiting: 'Not started' }[r.status] || r.status) + '</span>' : '') + CHEV + '</button></li>';
   }).join('');
-  seps(box);
+  seps(box); wireImgs(box);
   host.size();
 }
+// a tap on the back from the card (Wes, 17 Oct): the tool, from here, with the person's id; where the host can't, the words as a message.
+// Sent: "Tap sent ✓" for a minute (one a minute, as the server counts), then the button again.
+var TAP_AT = {};
+function wireTap() {
+  var b = document.getElementById('tap'), t = V && V.tap; if (!b || !t) return;
+  var wait = function (ms) { b.disabled = true; b.textContent = 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
+  var since = Date.now() - (TAP_AT[t.person] || 0); if (since < 60e3) wait(60e3 - since);
+  b.addEventListener('click', function () {
+    if (b.disabled) return; b.disabled = true; b.textContent = 'Sending…';
+    var old = b.parentNode.querySelector('.tapwhy'); if (old) old.remove();
+    var say = function (msg) { var p = document.createElement('p'); p.className = 'tapwhy'; p.textContent = msg; b.parentNode.appendChild(p); host.size(); };
+    host.call('tap_on_the_back', { person: t.person }).then(function (r) {
+      var sc = r && r.structuredContent;
+      if (sc && sc.sent) { TAP_AT[t.person] = Date.now(); wait(60e3); return; }
+      b.disabled = false; b.textContent = t.label; say((sc && (sc.message || sc.error)) || 'The tap didn’t go through. Try again in a moment.');
+    }).catch(function () {
+      host.message((t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[t.person] = Date.now(); wait(60e3); })
+        .catch(function () { b.disabled = false; b.textContent = t.label; say('Ask in the chat: “Give ' + t.first + ' a tap on the back”.'); });
+    });
+  });
+}
+function wireOpen(el) { if (el) el.querySelectorAll('[data-open]').forEach(function (b) { b.addEventListener('click', function () { host.open(b.getAttribute('data-open')); }); }); }
+function wireImgs(el) { (el || root).querySelectorAll('.av img').forEach(function (i) { i.addEventListener('error', function () { i.remove(); }); if (i.complete && !i.naturalWidth) i.remove(); }); } // a picture that won't load: the initials underneath
 function wire() {
+  wireImgs(root);
+  wireTap();
   root.querySelectorAll('[data-open]').forEach(function (b) { b.addEventListener('click', function () { host.open(b.getAttribute('data-open')); }); });
   root.querySelectorAll('[data-back]').forEach(function (b) { b.addEventListener('click', function () { var p = STACK.pop(); if (p) show(p); }); });
   var box = document.getElementById('rows');
@@ -311,9 +421,7 @@ function drawGl(v, my) {
         map.addLayer({ id: 'c-line', type: 'line', source: 'c', layout: round, paint: { 'line-gradient': st, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 14, 6] } });
       }
       var mk = function (cls, lon, lat, z) { var d = document.createElement('div'); d.className = cls; var m = new gl.Marker({ element: d }).setLngLat([lon, lat]).addTo(map); m.getElement().style.zIndex = z; return m; };
-      if (v.ghost) mk('ghost', v.ghost.lon, v.ghost.lat, 1);
-      (v.dots || []).forEach(function (d) { mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); });
-      if (v.dot) mk('dot', v.dot.lon, v.dot.lat, 4);
+      CUR = { seq: my, map: map, mk: mk, ghost: v.ghost ? mk('ghost', v.ghost.lon, v.ghost.lat, 1) : null, dots: (v.dots || []).map(function (d) { return mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); }), dot: v.dot ? mk('dot', v.dot.lon, v.dot.lat, 4) : null };
       map.once('idle', function () { wrap.classList.add('gl-on'); if (v.kind === 'fly') flyOver(map, gl, v); });
     });
   }).catch(function () { /* no MapLibre or no basemap here: the plain map is the map */ });
@@ -351,6 +459,30 @@ function flyOver(map, gl, v) {
   show(0);
   if (!still) setTimeout(function () { map.easeTo({ center: at(look * 0.35), zoom: zoom, pitch: 62, bearing: b0, duration: 1800 }); setTimeout(start, 1900); }, 600);
 }
+function boot() {
+if (OA) {
+    theme(OA.theme);
+    var pull = function () { try { var m = OA.toolResponseMetadata, v = m && m['livedot/view']; if (v && v !== V && !STACK.length) show(v); else if (!V && OA.toolOutput && OA.toolOutput.message) message(OA.toolOutput.message); theme(OA.theme);  } catch (e) { fail(e); } };
+    window.addEventListener('openai:set_globals', pull); pull();
+  } else {
+    request('ui/initialize', { protocolVersion: '2026-01-26', appInfo: { name: 'livedot', version: '1.0.0' }, appCapabilities: {} })
+      .then(function (r) { ready = true; context(r && r.hostContext); notify('ui/notifications/initialized', {}); host.size(); })
+      .catch(function () { /* not in a host: the test page sets window.LD_VIEW */ });
+  }
+}
+
+// ---------------------------------------------------------------- the safety net: never a blank or broken card
+// If drawing the card throws (a host we don't know, an API that isn't there), a plain card instead: the name, where they are, Watch live.
+function fail(e) {
+  try { console.warn('[livedot] fell back to the plain card:', e && e.message); } catch (x) { /* */ }
+  var v = V || {}, url = v.follow && v.follow.url;
+  try {
+    root.innerHTML = '<div class="card"><div class="hd">' + MARK + '<div class="ttl"><b>' + esc(v.name || v.title || 'livedot') + '</b><span>' + esc(v.headline || v.race || '') + '</span></div></div>'
+      + (url ? '<div class="ft"><a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener">' + esc((v.follow && v.follow.label) || 'Watch live') + '</a></div>' : '') + '<span class="sp">' + esc(v.sponsor || '') + '</span></div>';
+    host.size();
+  } catch (x) { /* nothing more to do */ }
+}
+try { boot(); } catch (e) { fail(e); }
 })();
 </script>
 </body>

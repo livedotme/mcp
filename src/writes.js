@@ -28,7 +28,7 @@ export const WRITE_TOOLS = [
   {
     name: 'plan_route',
     title: 'Weather along your route',
-    description: 'The weather along a route at the time you\'d ride or run it, from a GPX file or a link (Ride with GPS, or any GPX link): the forecast within 10 days, 10 years of weather on that date beyond it, rated by Windline\'s forecast engine, with the headwind and tailwind stretches, heat and rain, and a map. No account needed. For "What will the wind be like on this route on Saturday at 6?". Several GPX files are one multi-day tour: pass them all as files (ordered by the numbers in their names, else by the map; one day after another from start), never one call per file.',
+    description: 'The weather along the user\'s own route (my route, a GPX file, or a link: Ride with GPS or any GPX link) at the time they\'d ride or run it, and a flyover of that route (a flyby, fly over my route) that plays in the chat, coloured by the weather: the forecast within 10 days, 10 years of weather on that date beyond it, rated by Windline\'s forecast engine, with the headwind and tailwind stretches, heat and rain. No account needed. For "What will the wind be like on this route on Saturday at 6?" or "Show me the weather for this GPX and a flyover". The route stays theirs: nothing is published. For a 3D flight and a route video, offer to save it as a private ride or run with create_event (visibility private). Several GPX files are one multi-day tour: pass them all as files (ordered by the numbers in their names, else by the map; one day after another from start), never one call per file.',
     inputSchema: { type: 'object', properties: { ...ROUTE, gpx_file: { type: 'object', description: 'An attached GPX file (ChatGPT).', properties: { download_url: { type: 'string' }, file_id: { type: 'string' } } },
       start: { type: 'string', description: 'When they start, "YYYY-MM-DD HH:MM" local to the route. Ask if they didn\'t say.' }, files: { type: 'array', items: FILE, description: 'Several GPX files (a multi-day tour): ordered by the numbers in their names, else by the map; one day after another from start.' }, rest_days: { type: 'array', items: { type: 'string' }, description: 'With files: dates with no riding, "YYYY-MM-DD", only if the user named rest days.' }, starts: { type: 'array', items: { type: 'string' }, description: 'Each day\'s own local start, "YYYY-MM-DD HH:MM", when they differ.' }, name: { type: 'string', description: 'What to call the plan, if the user named it.' }, tz: { type: 'string', description: 'The route\'s IANA time zone, if known (else worked out from where it starts).' },
       sport: { type: 'string', enum: ['ride', 'run'], description: 'ride (default) or run.' }, pace: { type: 'number', description: 'Riding speed in km/h (default 25), or running pace in minutes per km (default 6).' }, units: UNITS },
@@ -182,7 +182,16 @@ export async function planRoute(ctx, args, sponsorLine) {
   out.text = out.text.replace(/\nMore: https:\/\/(windline|runfast)\.tech/, `\nMake it an event${sport === 'run' ? ' in RunFast' : ' in Windline'}: ${P.url}`);
   if (plan && plan.days.length > 1) out.text = `${plan.days.length} days, ${plan.why}${plan.note ? `. ${plan.note}` : '.'}\n` + out.text;
   if (out.structured) out.structured = { ...out.structured, view: 'plan_route', tz, km: Math.round(totalKm * 10) / 10, ...(plan ? { order: plan.order, order_note: plan.note, files: plan.days.map((d) => d.file) } : {}) };
-  if (out.map) out.map.follow = { url: P.url, label: sport === 'run' ? 'Open RunFast' : 'Open Windline' };
+  if (out.map) {
+    // the flyover of THEIR route in the chat (the widget's fly view: play, whole route, the weather along it), never a link to a page:
+    // a GPX someone gave us has no public page, so the 3D flight and the video come by saving it as a private ride or run (create_event)
+    const f = ctx.f0(tz);
+    out.map.kind = 'fly'; out.map.fly = null; out.map.headline = f.dist(totalKm).replace(/ \(.*\)/, '');
+    out.map.follow = { url: P.url, label: sport === 'run' ? 'Open RunFast' : 'Open Windline' };
+    const fly = `Press play on the map to fly over your route, coloured by the weather. For a 3D flight and a video of it, I can save it as a private ${sport === 'run' ? 'run in RunFast' : 'ride in Windline'} (only you see it; nothing is published): just say so.`;
+    out.text = out.text.endsWith(sponsorLine) ? `${out.text.slice(0, -sponsorLine.length).replace(/\s*$/, '')}\n${fly}\n\n${sponsorLine}` : `${out.text}\n${fly}`;
+    if (out.structured) out.structured = { ...out.structured, flyover: true, fly_3d: null };
+  }
   return out;
 }
 

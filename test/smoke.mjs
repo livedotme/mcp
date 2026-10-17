@@ -6,13 +6,15 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { handle, TOOLS, serverCard } from '../src/server.js';
+import { handle, TOOLS, serverCard, missOf } from '../src/server.js';
 import { parseMembers } from '../src/members.js';
+import { BUILD } from '../src/gen/build.js';
+const WURI = `ui://livedot/live-map.${BUILD}.html`;
 
 const DIR = path.dirname(fileURLToPath(import.meta.url)), PORT = 8790 + Math.floor(Math.random() * 100);
 const fx = spawn(process.execPath, [path.join(DIR, 'fixture-api.mjs')], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((ok) => fx.stdout.once('data', ok));
-const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `http://localhost:${PORT}/runfast`, MCP_AUTH_API: `http://localhost:${PORT}/windline/api/mcp` }, SHOW = process.argv.includes('--show');
+const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `http://localhost:${PORT}/runfast`, MCP_AUTH_API: `http://localhost:${PORT}/windline/api/mcp`, MCP_PROXY_SECRET: 'test-proxy' }, SHOW = process.argv.includes('--show');
 let n = 0;
 // the towns at a route's ends (Photon, as the dashboard): stubbed here by latitude, so the tests never depend on it
 const TOWNS = [[-34.18, 'Mossel Bay'], [-34.08, 'George'], [-33.98, 'Wilderness'], [-33.88, 'Knysna'], [-33.78, 'Plettenberg Bay'], [-33.68, 'Storms River']];
@@ -32,7 +34,7 @@ function conforms(name, res) {
   (o.required || []).forEach((k) => assert.ok(k in s, `${name}: ${k} missing`));
   for (const [k, d] of Object.entries(o.properties)) { if (!(k in s)) continue; if (d.type) assert.ok(fits(s[k], d.type), `${name}.${k}: ${TYPE(s[k])} is not ${d.type}`); if (d.enum) assert.ok(d.enum.includes(s[k]), `${name}.${k}: ${s[k]} not in ${d.enum}`); }
 }
-const SPONSOR = /Live tracking, proudly brought to you free thanks to \w+\.$/;
+const SPONSOR = /Live tracking, proudly brought to you free thanks to (\w+|\[\w+\]\(https:\/\/[^)\s]+\))\.$/; // the sponsor's name links to them (Wes, 17 Oct)
 const test = async (name, fn) => { try { await fn(); console.log('ok  ' + name); } catch (e) { console.log('FAIL ' + name + '\n     ' + e.message); process.exitCode = 1; } };
 
 try {
@@ -42,7 +44,7 @@ try {
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
     assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
-    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route', 'tap_on_the_back', 'invite_members'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
+    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route', 'tap_on_the_back', 'invite_members'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, WURI); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
     const b = await post([{ jsonrpc: '2.0', id: 4, method: 'ping' }, { jsonrpc: '2.0', method: 'notifications/initialized' }]); assert.equal(b.body.length, 1);
@@ -60,13 +62,13 @@ try {
   await test('many Megans: the top 5 and the total, a picker, a question, never a guess', async () => {
     const r = await call('find_person', { name_or_handle: 'Megan', event: 'the Comrades preview' }), s = r.structuredContent;
     assert.equal(s.view, 'picker'); assert.equal(s.people.length, 5); assert.equal(s.total, '20+'); assert.match(r.content[0].text, /20\+ Megans in the Comrades/); assert.match(r.content[0].text, /ONE short question/);
-    const v = r._meta['livedot/view']; assert.equal(v.kind, 'picker'); assert.equal(v.rows.length, 20); assert.ok(v.rows.every((x) => /^Megan [A-Z]\.$/.test(x.name)));
+    const v = r._meta['livedot/view']; assert.equal(v.kind, 'picker'); assert.equal(v.rows.length, 20); assert.ok(v.rows.every((x) => /^Megan \S{2,}/.test(x.name) && !/^Megan [A-Z]\.$/.test(x.name)), "Findable people by their full name (Wes, 17 Oct)");
     assert.ok(MOVINGFIRST(v.rows), 'live first');
     const looks = v.rows.map((x) => [x.name, x.where, x.pace, x.goal, x.extra, x.handle].join('|')); assert.equal(new Set(looks).size, looks.length, 'two rows look the same');
   });
   await test('narrowing by surname: one Megan, answered at once', async () => {
     const r = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades', surname: 'Bot' });
-    assert.equal(r.structuredContent.view, 'person'); assert.equal(r.structuredContent.name, 'Megan B.');
+    assert.equal(r.structuredContent.view, 'person'); assert.equal(r.structuredContent.name, 'Megan Botha');
   });
   await test('a bib: said plainly that the public pages don\'t show bibs', async () => {
     const r = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades', bib: '12345' });
@@ -78,7 +80,7 @@ try {
   });
   await test('a rider by handle, imperial by the tool\'s units', async () => {
     const r = await call('where_is', { handle: 'livedot.me/thandi', units: 'imperial' }), t = r.content[0].text;
-    assert.match(t, /Thandi M\. is at mile \d+ of \d+ mi/); assert.match(t, /mph/); assert.ok(!/km\/h/.test(t)); assert.match(t, SPONSOR);
+    assert.match(t, /Thandi Mokoena is at mile \d+ of \d+ mi/); assert.match(t, /mph/); assert.ok(!/km\/h/.test(t)); assert.match(t, SPONSOR);
   });
   await test('ChatGPT\'s user location decides the units when none are passed', async () => {
     const r = await call('where_is', { handle: 'thandi' }, { 'openai/userLocation': { country: 'ZA' }, 'openai/locale': 'en-ZA' }); assert.match(r.content[0].text, /km \d+ of/); assert.ok(!/mile/.test(r.content[0].text));
@@ -110,8 +112,8 @@ try {
     const r = await call('event_weather', { event: 'Comrades demo' }), s = r.structuredContent;
     assert.equal(s.basis, 'forecast'); assert.match(r.content[0].text, /Forecast from Apple Weather/); assert.ok(s.days[0].heat_stress !== undefined);
     // the forecast's age on every ask, also the second within 30 minutes (served from the memo: the read's own fetch time kept with it)
-    assert.ok(s.forecast_updated, 'no forecast time'); assert.match(r._meta['livedot/view'].updated, /^Forecast updated \d+ min ago · Apple Weather$/); assert.match(r.content[0].text, /Forecast updated \d+ min ago\./);
-    const r2 = await call('event_weather', { event: 'Comrades demo' }); assert.equal(r2.structuredContent.forecast_updated, s.forecast_updated); assert.match(r2._meta['livedot/view'].updated, /^Forecast updated \d+ min ago/); assert.match(r2.content[0].text, /Forecast updated \d+ min ago\./);
+    assert.ok(s.forecast_updated, 'no forecast time'); assert.match(r._meta['livedot/view'].updated, /^Forecast updated (\d+ h )?\d+ min ago · Apple Weather$/); assert.match(r.content[0].text, /Weather: \[Apple Weather\]\(https:\/\/weatherkit\.apple\.com\/legal-attribution\.html\) \(updated (\d+ h )?\d+ min ago\)\./);
+    const r2 = await call('event_weather', { event: 'Comrades demo' }); assert.equal(r2.structuredContent.forecast_updated, s.forecast_updated); assert.match(r2._meta['livedot/view'].updated, /^Forecast updated (\d+ h )?\d+ min ago/); assert.match(r2.content[0].text, /Weather: \[Apple Weather\]\(https:\/\/weatherkit\.apple\.com\/legal-attribution\.html\) \(updated (\d+ h )?\d+ min ago\)\./);
     const g = await call('event_weather', { event: 'Gravel Burn', units: 'metric' }); assert.ok(g.structuredContent.days.length >= 6, 'stages'); assert.match(g.content[0].text, /Stage|to /);
   });
   await test('fly_route: "Fly the Comrades" (the demo course), with the weather and the links', async () => {
@@ -159,12 +161,12 @@ try {
     assert.equal(v.ahead[1].k, 'Day 2 · George → Knysna'); assert.equal(v.ahead[1].at, '7:00'); assert.match(v.ahead[1].sub, /^1,336 m up · Sun 7 Mar$/); assert.match(v.headline, /· 1,987 m up$/);
     assert.deepEqual(v.stats.map((x) => x.k), ['First day', 'Last day', 'Distance', 'Climbing']); assert.equal(v.stats[0].sub, '6 Mar 2027'); assert.equal(v.stats[3].v, '1,987 m');
     const ce = (await post({ jsonrpc: '2.0', id: 7, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'create_event');
-    assert.equal(ce._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(ce._meta['openai/outputTemplate'], 'ui://livedot/live-map.html'); assert.deepEqual(ce._meta.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]);
+    assert.equal(ce._meta.ui.resourceUri, WURI); assert.equal(ce._meta['openai/outputTemplate'], WURI); assert.deepEqual(ce._meta.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]);
     // a club ride gets the same card: one route, weekly, Group ride
     const cr = (await (await postRaw({ jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'post_club_ride', arguments: { page: 'acme-cc', name: 'Saturday coffee ride', gpx: g2('Sea Point', 'Camps Bay', 412, -33.92), start: '2027-03-06 06:30', weekly: { days: [6], time: '06:30' } } } }, { Authorization: 'Bearer good-token' })).json()).result, cv = cr._meta['livedot/view'];
     assert.equal(cv.kind, 'draft'); assert.match(cv.race, /^Group ride · \d+ km$/); assert.equal(cv.key, null); assert.equal(cv.stops.length, 1); assert.equal(cv.ahead[0].k, 'Sea Point → Camps Bay'); assert.equal(cv.ahead[0].at, '6:30');
     assert.equal(cv.stats[0].k, 'Start'); assert.match(cv.stats[0].sub, /^Every week from 6 Mar$/); assert.equal(cv.follow.label, 'Open in Windline'); assert.equal(cv.updated, 'Draft · Publish when you’re ready');
-    const pc = (await post({ jsonrpc: '2.0', id: 9, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'post_club_ride'); assert.equal(pc._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.deepEqual(pc._meta.securitySchemes, [{ type: 'oauth2', scopes: ['clubs.post'] }]);
+    const pc = (await post({ jsonrpc: '2.0', id: 9, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'post_club_ride'); assert.equal(pc._meta.ui.resourceUri, WURI); assert.deepEqual(pc._meta.securitySchemes, [{ type: 'oauth2', scopes: ['clubs.post'] }]);
     const pub = await postRaw({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'publish_event', arguments: { event_id: 'ev1', confirm: true } } }, { Authorization: 'Bearer good-token' });
     const pj = await pub.json(); const last = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop(); assert.equal(last.args.id, 'ev1'); assert.equal(last.args.event_id, 'ev1'); assert.ok(pj.result);
   });
@@ -172,6 +174,10 @@ try {
     const gpx = `<gpx><trk><trkseg>${Array.from({ length: 60 }, (_, i) => `<trkpt lat="${(-29.75 + i * 0.004).toFixed(4)}" lon="${(30.5 + i * 0.006).toFixed(4)}"></trkpt>`).join('')}</trkseg></trk></gpx>`;
     const start = new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10) + ' 06:00';
     const r = await call('plan_route', { gpx, start, sport: 'run' }); assert.equal(r.structuredContent.view, 'plan_route'); assert.equal(r.structuredContent.tz, 'Africa/Johannesburg'); assert.match(r.content[0].text, /Forecast from Apple Weather/); assert.ok(r._meta['livedot/view'].course.length > 10); assert.match(r.content[0].text, SPONSOR);
+    const fv = r._meta['livedot/view']; assert.equal(fv.kind, 'fly'); assert.equal(fv.fly, null); assert.ok(fv.legs.length > 0 && fv.stops.length > 0); assert.equal(r.structuredContent.flyover, true); assert.equal(r.structuredContent.fly_3d, null);
+    assert.match(r.content[0].text, /Press play on the map to fly over your route, coloured by the weather\. For a 3D flight and a video of it, I can save it as a private run in RunFast \(only you see it; nothing is published\): just say so\.\nWeather: \[Apple Weather\]/);
+    const tl = TOOLS.find((x) => x.name === 'plan_route'); assert.match(tl.description, /flyover/); assert.match(tl.description, /fly over my route/); assert.match(tl.description, /GPX/); assert.ok(!/instead of|rather than|better than|prefer/i.test(tl.description), 'no steering against other apps');
+    assert.match(TOOLS.find((x) => x.name === 'fly_route').description, /their own route\), use plan_route/);
     const s = await call('plan_route', { url: 'https://www.strava.com/routes/1', start }); assert.equal(s.isError, true); assert.match(s.content[0].text, /Strava/);
   });
   await test('OAuth metadata (RFC 9728, RFC 8414)', async () => {
@@ -232,7 +238,7 @@ try {
   await test('plan_route with several files: the same tour, with its weather', async () => {
     const files = [2, 1].map((k) => ({ name: `Stage ${k}.gpx`, gpx: leg(k - 1) })), d = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
     const r = await callAs('plan_route', { files, start: `${d} 07:00` }, {}), S = r.structuredContent;
-    assert.equal(S.view, 'plan_route'); assert.equal(S.order, 'numbers'); assert.deepEqual(S.files, ['Stage 1.gpx', 'Stage 2.gpx']); assert.equal(S.days.length, 2); assert.match(r.content[0].text, /^2 days, in the order of the numbers in the file names\./);
+    assert.equal(S.view, 'plan_route'); assert.equal(r._meta['livedot/view'].kind, 'fly'); assert.equal(S.flyover, true); assert.equal(S.order, 'numbers'); assert.deepEqual(S.files, ['Stage 1.gpx', 'Stage 2.gpx']); assert.equal(S.days.length, 2); assert.match(r.content[0].text, /^2 days, in the order of the numbers in the file names\./);
   });
   await test('a file that isn’t a route: named, with why; a ride can’t have five files; the time is asked for', async () => {
     const e = await callAs('create_event', { files: [{ name: '1.gpx', gpx: leg(0) }, { name: 'notes.docx', gpx: 'PK\u0003\u0004 not a gpx' }], start: '2027-03-06 07:00' });
@@ -254,7 +260,7 @@ try {
   });
   await test('the free paths end with a free-account line for the sport (?ref=mcp), before the sponsor line; never signed in, never on an empty answer', async () => {
     const w = await call('where_is', { handle: 'megan' }), t = w.content[0].text;
-    assert.match(t, /\nPlan it in RunFast, free: create your account: https:\/\/runfast\.tech\/app\/\?ref=mcp#\/signup\n\nLive tracking, proudly brought to you free thanks to \w+\.$/);
+    assert.match(t, /\nPlan it in RunFast, free: create your account: https:\/\/runfast\.tech\/app\/\?ref=mcp#\/signup\n\nLive tracking, proudly brought to you free thanks to \[ProLend\]\(https:\/\/[^)]+\)\.$/);
     assert.deepEqual(w._meta['livedot/view'].cta, { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' }); assert.equal(w.structuredContent.signup.url, 'https://runfast.tech/app/?ref=mcp#/signup');
     const r = await call('where_is', { handle: 'livedot.me/thandi' }); assert.match(r.content[0].text, /Plan it in Windline, free: create your account: https:\/\/app\.windline\.tech\/\?ref=mcp#\/signup\n\n/);
     const none = await call('find_person', { name_or_handle: 'Zebedee Quux' }); assert.ok(!/create your account/.test(none.content[0].text), 'not on an empty answer');
@@ -307,6 +313,66 @@ try {
     assert.equal(e.isError, true); assert.match(e.content[0].text, /couldn't find any names or email addresses/);
     const tl = TOOLS.find((x) => x.name === 'invite_members'); assert.equal(tl.annotations.readOnlyHint, false); assert.deepEqual(tl.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.match(tl.description, /nobody joins until they confirm/);
   });
+  // ---- livedot misses (Wes: self-healing; KPMG GO): a note to Windline when a read tool finds nothing or a server fails
+  const misses = async () => (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).filter((x) => x.tool === 'miss').map((x) => ({ ...x.args, _proxy: x.proxy, _ip: x.ip }));
+  const settle = () => new Promise((r) => setTimeout(r, 150));
+  await test('misses: nobody found is noted (the tool, what was asked, the outcome, the servers asked, the build), never who asked', async () => {
+    const n0 = (await misses()).length; await call('find_person', { name_or_handle: 'Zebedee Quux', event: 'Some Race' }, { 'openai/subject': 'v1/secret-user', 'openai/userLocation': { country: 'ZA' } }); await settle();
+    const m = (await misses()).slice(n0); assert.equal(m.length, 1); const x = m[0];
+    assert.equal(x.tool, 'find_person'); assert.equal(x.q, 'Zebedee Quux'); assert.equal(x.event, 'Some Race'); assert.equal(x.outcome, 'none'); assert.equal(x.counts.results, 0); assert.ok(x.counts.asked >= 1);
+    assert.ok(x.servers.every((y) => ['windline', 'runfast'].includes(y.app) && Array.isArray(y.statuses))); assert.ok(typeof x.build === 'string' && x.build.length >= 3); assert.ok(x.at > 0);
+    assert.equal(x._proxy, 'test-proxy'); assert.equal(x._ip, null); assert.deepEqual(Object.keys(x).filter((k) => !k.startsWith('_')).sort(), ['at', 'build', 'counts', 'event', 'outcome', 'q', 'servers', 'tool']);
+    assert.ok(!/secret-user|ZA|openai|Bearer|good-token/.test(JSON.stringify(x)), 'never the asker');
+    const n1 = (await misses()).length; await call('where_is', { handle: 'megan' }); await call('event_status', { event: 'Comrades' }); await settle(); assert.equal((await misses()).length, n1, 'an answer is never a miss');
+  });
+  await test('misses: a server that fails is said plainly (never "couldn’t find anyone") and noted as upstream_error; a follow link’s code is never kept', async () => {
+    const n0 = (await misses()).length, r = await call('find_person', { name_or_handle: 'Boom Person' }), t = r.content[0].text; await settle();
+    assert.match(t, /^livedot couldn't reach Windline just now, so I can't say whether Boom is racing\. Try again in a moment\./); assert.ok(!/couldn't find anyone/.test(t)); assert.match(t, SPONSOR);
+    const m = (await misses()).slice(n0); assert.equal(m.length, 1); assert.equal(m[0].outcome, 'upstream_error:windline:503'); assert.ok(m[0].servers.find((y) => y.app === 'windline').statuses.includes(503));
+    await call('where_is', { code: 'zzzzzzzz' }); await call('where_is', { link: 'https://runfast.tech/f/abcd1234' }); await settle();
+    const l = (await misses()).slice(n0 + 1); assert.ok(l.length >= 1 && l.every((y) => y.q === '[follow link]'), JSON.stringify(l.map((y) => y.q)));
+    assert.equal(missOf('where_is', { person: 'runfast:f:abcd1234' }, { structured: { view: 'none' } }, [{ app: 'runfast', status: 200 }]).q, 'runfast:f:[follow link]');
+    assert.equal(missOf('find_person', { name_or_handle: 'x'.repeat(200) }, { structured: { view: 'none' } }, [{ app: 'runfast', status: 200 }]).q.length, 80);
+    assert.equal(missOf('event_status', { event: 'Comrades' }, { structured: { view: 'event' } }, [{ app: 'runfast', status: 0, timeout: true }]).outcome, 'timeout:runfast');
+    assert.equal(missOf('event_status', { event: 'Coast' }, { structured: { view: 'none', races: [{ name: 'A' }, { name: 'B' }] } }, [{ app: 'windline', status: 200 }]), null, 'a list to choose from is not a miss');
+  });
+  // ---- full names and photos for Findable people; a tap button on the card (Wes, 17 Oct)
+  await test('Findable people: full name and their own photo (from the apps’ hosts only); a handle or link alone: first name and initial, no photo', async () => {
+    const b = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades', surname: 'Bot' }), S = b.structuredContent, v = b._meta['livedot/view'];
+    assert.equal(S.name, 'Megan Botha'); assert.equal(S.photo, 'https://runfast.tech/img/demo/a01.png'); assert.equal(v.photo, S.photo); assert.match(b.content[0].text, /^Megan Botha /);
+    const pk = (await call('find_person', { name_or_handle: 'Megan', event: 'the Comrades preview' }))._meta['livedot/view'].rows;
+    const sm = pk.find((x) => x.name === 'Megan Smith'), bo = pk.find((x) => x.name === 'Megan Botha'); if (sm) assert.equal(sm.photo, null, 'a photo from a host that isn’t the app’s: never'); if (bo) assert.equal(bo.photo, 'https://runfast.tech/img/demo/a01.png');
+    const t = await call('where_is', { handle: 'livedot.me/thandi' }); assert.equal(t.structuredContent.name, 'Thandi Mokoena'); assert.equal(t.structuredContent.photo, 'https://windline.tech/api/avatar/pfixthandi');
+    const h = await call('where_is', { handle: 'megan' }); assert.equal(h.structuredContent.name, 'Megan N.'); assert.equal(h.structuredContent.photo, null);
+    const ev = await call('event_status', { event: 'Comrades' }); assert.ok(ev.structuredContent.leaders.every((x) => 'photo' in x));
+    const csp = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0]._meta;
+    for (const d of ['https://windline.tech', 'https://runfast.tech']) { assert.ok(csp.ui.csp.resourceDomains.includes(d)); assert.ok(csp['openai/widgetCSP'].resource_domains.includes(d)); }
+  });
+  await test('the tap button: shown only when a tap would go through (can_tap); "Congratulate" after the finish; never when taps are off or they stopped', async () => {
+    const m = await call('where_is', { handle: 'megan' }); assert.equal(m.structuredContent.can_tap, true); assert.deepEqual(m._meta['livedot/view'].tap, { person: 'h:megan', first: 'Megan', finished: false, label: 'Give Megan a tap on the back' });
+    const one = async (sur) => call('find_person', { name_or_handle: 'Megan', event: 'Comrades', surname: sur });
+    const off = await one('Nkos'); assert.equal(off.structuredContent.name, 'Megan Nkosi'); assert.equal(off.structuredContent.can_tap, false); assert.equal(off._meta['livedot/view'].tap, null);
+    const fin = await one('Kru'); if (fin.structuredContent.status === 'finished') { assert.equal(fin.structuredContent.can_tap, true); assert.equal(fin._meta['livedot/view'].tap.label, 'Congratulate Megan'); }
+    const pk = (await call('find_person', { name_or_handle: 'Megan', event: 'the Comrades preview' }))._meta['livedot/view'].rows, stopped = pk.find((x) => x.status === 'stopped');
+    if (stopped) { const st = await call('where_is', { person: stopped.id }); assert.equal(st.structuredContent.can_tap, false); assert.equal(st._meta['livedot/view'].tap, null); }
+    const tl = TOOLS.find((x) => x.name === 'tap_on_the_back'); assert.equal(tl._meta['openai/widgetAccessible'], true); assert.deepEqual(tl._meta.ui.visibility, ['model', 'app']);
+  });
+  await test('the widget’s address carries the build (a deploy is a fresh widget in ChatGPT); old addresses still read today’s widget; the card refreshes itself', async () => {
+    assert.ok(BUILD && WURI.includes(BUILD)); const t = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools;
+    t.filter((x) => x._meta && x._meta.ui).forEach((x) => { assert.equal(x._meta.ui.resourceUri, WURI); assert.equal(x._meta['openai/outputTemplate'], WURI); });
+    for (const u of [WURI, 'ui://livedot/live-map.html', 'ui://livedot/live-map.0123abcd.html']) { const r = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: u } })).body.result.contents[0]; assert.equal(r.uri, u); assert.match(r.text, /startLive/); }
+    assert.equal((await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: 'ui://livedot/other.html' } })).body.error.code, -32002);
+    const m = await call('where_is', { handle: 'megan' }); assert.deepEqual(m._meta['livedot/view'].refresh, { tool: 'where_is', args: { person: 'h:megan', units: m._meta['livedot/view'].units } });
+    const e = await call('event_status', { event: 'Comrades' }); assert.equal(e._meta['livedot/view'].refresh.tool, 'event_status');
+  });
+  await test('the widget starts only once all of it is defined (ChatGPT hands the answer over at once), with a plain card if drawing fails; widgetCSP is arrays of https origins; Apple’s mark and its legal page; the sponsor linked', async () => {
+    const r = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: WURI } })).body.result.contents[0], h = r.text;
+    assert.match(h, /try \{ boot\(\); \} catch \(e\) \{ fail\(e\); \}\n\}\)\(\);\n<\/script>/); assert.ok(!/onerror=/.test(h), 'no inline handlers (a strict CSP blocks them)'); assert.ok(h.length < 120000);
+    const c = r._meta['openai/widgetCSP']; for (const k of ['connect_domains', 'resource_domains']) { assert.ok(Array.isArray(c[k]) && c[k].every((d) => /^https:\/\/[a-z0-9.-]+$/.test(d)), k); }
+    assert.ok(c.resource_domains.includes('https://weatherkit.apple.com')); assert.match(h, /weatherkit\.apple\.com\/legal-attribution\.html/);
+    const m = await call('where_is', { handle: 'megan' }), v = m._meta['livedot/view']; assert.equal(v.appleLegal, 'https://weatherkit.apple.com/legal-attribution.html'); assert.equal(v.sponsorName, 'ProLend'); assert.match(v.sponsorUrl, /^https:\/\//);
+    assert.match(m.content[0].text, /\nWeather: \[Apple Weather\]\(https:\/\/weatherkit\.apple\.com\/legal-attribution\.html\)/); assert.match(m.content[0].text, /free thanks to \[ProLend\]\(https:\/\/[^)]+\)\.$/);
+  });
   await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;
     for (const x of t) {
@@ -327,7 +393,7 @@ try {
     assert.match((await post({ jsonrpc: '2.0', id: 96, method: 'prompts/get', params: { name: 'fly_a_course', arguments: {} } })).body.error.message, /Missing argument: event/);
   });
   await test('resources: the live map and the guide; an unknown one is a clean error', async () => {
-    const l = (await post({ jsonrpc: '2.0', id: 97, method: 'resources/list' })).body.result.resources; assert.deepEqual(l.map((x) => x.uri), ['ui://livedot/live-map.html', 'livedot://guide']);
+    const l = (await post({ jsonrpc: '2.0', id: 97, method: 'resources/list' })).body.result.resources; assert.deepEqual(l.map((x) => x.uri), [WURI, 'livedot://guide']);
     const g = (await post({ jsonrpc: '2.0', id: 98, method: 'resources/read', params: { uri: 'livedot://guide' } })).body.result.contents[0]; assert.equal(g.mimeType, 'text/markdown'); assert.match(g.text, /find_person/);
     assert.equal((await post({ jsonrpc: '2.0', id: 99, method: 'resources/read', params: { uri: 'livedot://nope' } })).body.error.code, -32002);
   });

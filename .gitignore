@@ -5,3 +5,4 @@ docs/shots/*.full.png
 src/gen/engine.js
 src/gen/tzlookup.js
 livedot-openai-plugin.zip
+src/gen/build.js

@@ -28,13 +28,15 @@ export async function getJson(url, ms = 7000, cacheTtl = 0) {
     const r = await fetch(url, init);
     let body = null; try { body = await r.json(); } catch (e) { body = null; }
     return { ok: r.ok, status: r.status, body, headers: r.headers };
-  } catch (e) { return { ok: false, status: 0, body: null, headers: null }; }
+  } catch (e) { return { ok: false, status: 0, body: null, headers: null, timeout: !!(e && (e.name === 'TimeoutError' || e.name === 'AbortError')) }; }
 }
 
-export function reads(env = {}) {
-  const H = hosts(env), api = (app, p, ms, ttl) => getJson(H[app] + p, ms, ttl);
+/** reads(env, trace): trace, if given, gets { app, status, timeout } for each app server asked (livedot misses, server.js). */
+export function reads(env = {}, trace = null) {
+  const seen = (app) => (r) => { if (trace && trace.length < 40) trace.push({ app, status: r.status, timeout: !!r.timeout }); return r; };
+  const H = hosts(env), api = (app, p, ms, ttl) => getJson(H[app] + p, ms, ttl).then(seen(app));
   // the demos are always the apps' own, on their real servers (also when a test points the rest at sample data)
-  const demo = (app, p, ms, ttl) => getJson(SITE[app] + '/api' + p, ms, ttl), isD = (id) => /^(coast|comrades)-demo$/.test(String(id));
+  const demo = (app, p, ms, ttl) => getJson(SITE[app] + '/api' + p, ms, ttl).then(seen(app)), isD = (id) => /^(coast|comrades)-demo$/.test(String(id));
   const e = encodeURIComponent;
   return {
     H,

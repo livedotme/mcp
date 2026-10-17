@@ -37,24 +37,25 @@ function field(seed, n, extra) {
   extra.forEach((x, i) => { out[i * 13 + 5] = { ...out[i * 13 + 5], ...x }; });
   return out;
 }
-const RUN = field(4101, 400, MEGANS.map((s, i) => ({ name: 'Megan ' + s, pid: 'pfixmeg' + String(i).padStart(4, '0') })));
+const RUN = field(4101, 400, MEGANS.map((s, i) => ({ name: 'Megan ' + s, pid: 'pfixmeg' + String(i).padStart(4, '0'), // photos as the apps give them (one from a host that isn't theirs: never shown); one with taps off; one finished
+  ...(s === 'Botha' ? { photo: 'https://runfast.tech/img/demo/a01.png' } : s === 'Smith' ? { photo: 'https://evil.example/a.png' } : s === 'Nkosi' ? { tapsOff: true } : s === 'Kruger' ? { done: true } : {}) })));
 RUN[5] = { ...RUN[5], handle: 'megan', goal: 9 * 3600, r: 0.42, r3: 0.6 };
 RUN[0] = { ...RUN[0], name: 'Lerato Fast', pace: 245, r3: 0.5, nearEnd: true }; // out front, 400 m from the finish: the feed hides where (hide the ends), as the real one does // Megan Naidoo: livedot.me/megan, going for a sub-9 (Bill Rowan)
-const RIDE = field(5203, 150, [{ name: 'Thandi Mokoena', pid: 'pfixthandi', handle: 'thandi', goal: 6.5 * 3600 }]);
+const RIDE = field(5203, 150, [{ name: 'Thandi Mokoena', pid: 'pfixthandi', handle: 'thandi', goal: 6.5 * 3600, photo: '/api/avatar/pfixthandi' }]);
 
 const gun = (now, hoursIn) => Math.floor((now - hoursIn * HOUR) / 6e4) * 6e4;
 /** A RunFast runner's Live, now. */
 function runner(x, now) {
   const g = gun(now, 6.1), pace = x.pace || 300 + Math.round(x.r * 190), el = (now - g) / 1000, goal = x.goal || (x.r2 < 0.35 ? Math.round((pace - 15) * 90.3 / 600) * 600 : null);
   let status = x.r3 < 0.03 ? 'stopped' : x.r3 < 0.06 ? 'paused' : x.r3 < 0.08 ? 'nosignal' : 'live';
-  let km = x.nearEnd ? CR.total - 0.4 : Math.min(CR.total, el / pace); if (status === 'stopped') km *= 0.7;
+  let km = x.nearEnd ? CR.total - 0.4 : x.done ? CR.total : Math.min(CR.total, el / pace); if (status === 'stopped') km *= 0.7;
   const finished = km >= CR.total - 0.05; if (finished) status = 'finished';
   const ll = CR.at(km), fin = finished ? g + CR.total * pace * 1000 : g + (goal ? goal * 1000 + (el - km * goal / CR.total) * 1000 : CR.total * pace * 1000);
-  const v = { pid: x.pid, name: x.name, photo: null, status, race: { id: 'comrades-preview', name: 'Comrades (preview)' }, run: null, km: +km.toFixed(3), total: +CR.total.toFixed(1), started: g, goal, tagline: null,
+  const v = { pid: x.pid, name: x.name, photo: x.photo || null, status, race: { id: 'comrades-preview', name: 'Comrades (preview)' }, run: null, km: +km.toFixed(3), total: +CR.total.toFixed(1), started: g, goal, tagline: null,
     pace: status === 'live' ? pace : null, plan: { start: new Date(g).toISOString(), pace }, finish: status === 'stopped' ? null : fin, next: null,
     last: status === 'stopped' || km < 1 || CR.total - km < 1 ? null : { lat: ll[0], lon: ll[1], t: now - 20e3 }, line: [], seen: now - 20e3, // hidden near the start and finish
     ghost: goal ? (() => { const gk = Math.min(CR.total, el * CR.total / goal), p = CR.at(gk); return { lat: p[0], lon: p[1], km: +gk.toFixed(3), diff: Math.round(el - km * goal / CR.total) }; })() : null,
-    taps: { on: true, count: Math.round(x.r2 * 60), open: true } };
+    taps: { on: !x.tapsOff, count: Math.round(x.r2 * 60), open: ['live', 'paused', 'delayed', 'nosignal', 'finished'].includes(status) } }; // as live.js: open while running and in the day after the finish
   return v;
 }
 /** A Windline rider's Live, now. */
@@ -62,7 +63,7 @@ function rider(x, now) {
   const g = gun(now, 4.2), speed = 22 + Math.round(x.r * 140) / 10, el = (now - g) / 1000, goal = x.goal || null;
   let status = x.r3 < 0.04 ? 'paused' : 'live'; const km = Math.min(CO.total, (el / 3600) * speed); if (km >= CO.total - 0.05) status = 'finished';
   const ll = CO.at(km), ev = { id: 'coast-preview', name: 'Coast Classic (preview)', type: 'race', day: { id: coast.days[0].id, label: 'Coast Classic' }, tz: 'America/Los_Angeles' };
-  return { pid: x.pid, name: x.name, photo: null, status, findable: true, event: ev, km: +km.toFixed(3), total: +CO.total.toFixed(3), speed: status === 'live' ? speed : null, started: g,
+  return { pid: x.pid, name: x.name, photo: x.photo || null, status, findable: true, event: ev, km: +km.toFixed(3), total: +CO.total.toFixed(3), speed: status === 'live' ? speed : null, started: g,
     plan: { start: new Date(g).toISOString(), speed }, goal, tagline: null,
     ghost: goal ? (() => { const gk = Math.min(CO.total, el * CO.total / goal), p = CO.at(gk); return { lat: p[0], lon: p[1], km: +gk.toFixed(3), diff: Math.round(el - km * goal / CO.total) }; })() : null,
     finish: g + (goal ? goal * 1000 + (el - km * goal / CO.total) * 1000 : CO.total / speed * HOUR), taps: { on: true, open: true, count: Math.round(x.r2 * 80) },
@@ -98,6 +99,7 @@ function route(app, p, q, now) {
     const hitPg = pages.filter((x) => hit(x.name + ' ' + x.slug, q.q)); return [200, { now, profiles: hitPg.map((x) => ({ v: 1, slug: x.slug, app: 'windline', sport: 'cycling', type: 'organiser', name: x.name, url: 'https://windline.tech/o/' + x.slug, live: 0 })) }];
   }
   const people = app === 'windline' ? RIDE : RUN, live = (x) => (app === 'windline' ? rider(x, now) : runner(x, now)), key = app === 'windline' ? 'riders' : 'runners', rid = app === 'windline' ? 'coast-preview' : 'comrades-preview';
+  if (p === '/live/find' && app === 'windline' && /boom/i.test(String(q.q || ''))) return [503, { error: 'Briefly unavailable.' }]; // a server that fails (livedot misses)
   if (p === '/live/find') { const t = String(q.q || ''); if (t.replace(/[^A-Za-z]/g, '').length < 3) return [400, { error: 'Type at least 3 letters.' }];
     const L = people.filter((x) => hit(x.name, t)).slice(0, 20).map(live); return [200, { now, [key]: app === 'windline' ? L : L.map((v) => ({ pid: v.pid, name: v.name, photo: null, race: { id: 'comrades-preview', name: v.race.name, kind: 'race' }, live: ['live', 'paused', 'delayed', 'nosignal'].includes(v.status) })) }]; }
   if ((m = p.match(/^\/live\/(rider|runner)$/))) { const ids = String(q.pids || '').split(','); return [200, { now, [key]: people.filter((x) => ids.includes(x.pid)).map(live) }]; }
@@ -131,6 +133,7 @@ function route(app, p, q, now) {
 function mcpStub(req, res, p, raw) {
   const j = (code, b) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(b)); };
   let b = {}; try { b = JSON.parse(raw || '{}'); } catch (e) { b = {}; }
+  if (p === '/miss') { MCP_SEEN.push({ tool: 'miss', args: b, proxy: req.headers['x-livedot-proxy'] || null, ip: req.headers['x-livedot-client-ip'] || null }); return j(200, { ok: true }); }
   if (p === '/tap') { // Windline's /api/mcp/tap, stood in for: the handle or pid decides the answer (the real rules are riders.js's and live.js's)
     MCP_SEEN.push({ tool: 'tap', args: b, auth: req.headers.authorization || null });
     const who = b.handle || b.pid || b.code || '';

@@ -9,10 +9,12 @@ import { coursePoints, weatherFor, colourOf, KEY, HARD_WORDS, HEAT_WORDS } from 
 
 const MOVING = ['live', 'delayed', 'nosignal'];
 const HANDLE = /^[a-z][a-z0-9-]{2,29}$/;
-const STOP = new Set(['the', 'in', 'at', 'a', 'an', 'of', 'race', 'today', 'this', 'year', 'event']);
+const fullName = (n) => String(n || '').replace(/\s+/g, ' ').trim(); // a Findable person's name as they set it
+const STOP = new Set(['the', 'in', 'at', 'a', 'an', 'of', 'and', 'race', 'today', 'this', 'year', 'event', 'marathon', 'ultra', 'live']);
+const YEAR = /^(19|20)\d\d$/; // "Comrades 2026": the year never decides the race
 const words = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(Boolean);
 /** Every word typed is the start of a word in the text (livedot.me's search rule). */
-export const hit = (text, q) => { const t = words(text), w = words(q).filter((x) => !STOP.has(x)); return w.length > 0 && w.every((x) => t.some((y) => y.startsWith(x))); };
+export const hit = (text, q) => { const t = words(text), w = words(q).filter((x) => !STOP.has(x) && !YEAR.test(x)); return w.length > 0 && w.every((x) => t.some((y) => y.startsWith(x))); };
 const cid = (id) => String(id || '').replace(/^run:/, 'run-'); // RunFast spells a club race 'run:<id>' in entries and 'run-<id>' in addresses
 
 export const SPONSOR_FALLBACK = 'ProLend';
@@ -26,10 +28,21 @@ function norm(app, v) {
     km: typeof v.km === 'number' ? v.km : null, total: v.total || null, speed: v.speed, pace: v.pace, plan: v.plan || null, goal: v.goal || null,
     ghost: v.ghost || null, finish: v.finish || null, started: v.started || null, last: v.last || null, seen: v.seen || null,
     taps: v.taps && typeof v.taps.count === 'number' ? v.taps.count : 0, free: v.kind === 'free',
+    tapsOn: !(v.taps && v.taps.on === false), tapsOpen: !!(v.taps && v.taps.open), findable: !!v.findable, photo: photoOf(app, v.photo),
     bib: v.bib != null ? String(v.bib) : null, club: v.club ? String(v.club.name || v.club) : null, place: v.place || v.city || v.country || null, wave: v.wave || null, // only when an answer carries them
     event: ev ? { id: cid(ev.id), name: ev.name, tz: ev.tz || null, dayId: ev.day && ev.day.id, dayLabel: ev.day && ev.day.label } : null,
   };
 }
+/** A person's photo, only from the apps' own hosts (windline.tech, runfast.tech; a path is on the app's own), else null. */
+function photoOf(app, u) {
+  if (!u || typeof u !== 'string') return null;
+  try { const x = new URL(u, SITE[app]); return x.protocol === 'https:' && (x.hostname === 'windline.tech' || x.hostname === 'runfast.tech') ? x.href : null; } catch (e) { return null; }
+}
+/** How a person is shown: Findable (they chose to be found by name) by their full name and photo; anyone else by first name and
+ *  initial, no photo (Wes, 17 Oct: "how am I going to know who Megan N. is?"). */
+const named = (p) => !!(p && (p.found || p.findable));
+const nameOf = (p) => (named(p) ? fullName(p.name) : shortName(p.name));
+const photoFor = (p) => (named(p) ? p.photo || null : null);
 const listOf = (body) => (body && (body.riders || body.runners)) || [];
 const sharesPosition = (p) => MOVING.includes(p.status) && !!p.last && isFinite(p.last.lat) && isFinite(p.last.lon) && p.km != null;
 
@@ -89,10 +102,13 @@ async function personAnswer(ctx, p, via, extra = {}) {
   const { R, f0, now } = ctx, sport = p.app === 'runfast' ? 'run' : 'ride', doing = sport === 'run' ? 'running' : 'riding';
   let course = null, cbody = null;
   if (p.event && !p.free) { const c = await R.course(p.app, p.event.id); if (c.ok) { cbody = c.body; course = coursePoints(p.app, c.body, p.event.dayId); } }
-  const tz = (p.event && p.event.tz) || (cbody && cbody.tz) || null, f = f0(tz), name = shortName(p.name), first = firstName(p.name).replace(/^(.)/, (c) => c.toUpperCase());
+  const tz = (p.event && p.event.tz) || (cbody && cbody.tz) || null, f = f0(tz), name = nameOf(p), first = firstName(p.name).replace(/^(.)/, (c) => c.toUpperCase());
   const race = p.event ? p.event.name.replace(/\s*\(demo\)\s*$/i, ' (demo)') : p.free ? 'a ride of their own (Ride live)' : null;
   const shared = sharesPosition(p), url = followUrl(p, via), sponsor = sponsorLine(await sponsorName(R));
-  const S = { view: 'person', id: idOf(p, via), name, app: p.app, sport: SPORT[p.app], status: p.status, race, follow_url: url, units: f.system, sponsor_line: sponsor };
+  // a tap would go through (the apps' own rule, as their Live says it: taps on, and open while live or in the day after the finish),
+  // and this asker may give one: Findable, or holding their link or handle (Wes, 17 Oct: never a button that fails)
+  const canTap = !!(p.tapsOn && p.tapsOpen && (named(p) || (via && (via.code || via.handle))));
+  const S = { view: 'person', id: idOf(p, via), name, photo: photoFor(p), app: p.app, sport: SPORT[p.app], status: p.status, race, follow_url: url, can_tap: canTap, units: f.system, sponsor_line: sponsor };
   const lines = [], stats = [];
   const total = p.total || (course && course.km) || null;
   let w = null;
@@ -166,7 +182,9 @@ async function personAnswer(ctx, p, via, extra = {}) {
     stops: stopsOf(w), key: w ? KEY[sport] : null, keyTitle: sport === 'run' ? 'How hard the weather makes it' : 'The wind on the road',
     headline: shared ? f.atShort(p.km) + (total ? ' of ' + f.num(total) + ' ' + f.label.dist : '') : null,
     stats, ahead: (S.ahead ? w.ahead.slice(0, 4).map((g) => ({ k: f.atShort(g.s.fromKm) + '–' + f.num(g.s.toKm), v: (g.effect === 'head' ? 'Headwind ' + f.speedShort(g.head) : g.effect === 'tail' ? 'Tailwind ' + f.speedShort(-g.head) : g.effect === 'calm' ? 'Calm' : 'Side-on ' + f.speedShort(g.w.speed)), sub: f.degShort(g.w.temp) + (sport === 'run' && g.heat && g.heat !== 'low' ? ' · Heat ' + HEAT_WORDS[g.heat] : ''), c: colourOf(g, sport), at: clock(g.eta.getTime(), tz, f) })) : []),
-    follow: { url, label: via && via.handle ? 'Follow live' : 'Watch live' }, handle: via && via.handle || null,
+    follow: { url, label: via && via.handle ? 'Follow live' : 'Watch live' }, handle: via && via.handle || null, photo: S.photo,
+    refresh: { tool: 'where_is', args: { person: S.id, units: f.system } }, // the card keeps itself up to date (widget: every 30 s while it's on screen)
+    tap: canTap ? { person: S.id, first, finished: p.status === 'finished', label: p.status === 'finished' ? `Congratulate ${first}` : `Give ${first} a tap on the back` } : null,
     updated: [shared ? 'Position ' + ago(p.last.t || p.seen || now, now) : null, w && w.fetched ? 'Forecast ' + ago(w.fetched, now) : null, w ? 'Apple Weather' : null].filter(Boolean).join(' · '),
     sponsor, units: f.system,
   };
@@ -186,7 +204,7 @@ async function resolve(ctx, args) {
     else {
       const r = await R.liveByPid(m[1], [m[3]]), v = listOf(r.body)[0];
       if (!v) return { text: 'They aren\'t findable on a live race right now (they may have finished, stopped sharing or chosen not to be findable).' };
-      return { p: norm(m[1], v), via: null };
+      return { p: { ...norm(m[1], v), found: true }, via: null }; // an id from find_person: someone found by name (Findable)
     }
   }
   if (handle) {
@@ -254,7 +272,7 @@ export async function tapOnTheBack(ctx, args) {
               : out.status === 404 ? `${who} isn't live just now, so a tap can't reach them.` : 'The tap didn\'t go through just now. Try again in a moment.';
     return { text: `${why}\n\n${sponsor}`, structured: { view: 'none', message: why, error: e || null }, map: null };
   }
-  const done = !!out.body.finished, line = out.body.demo ? `Tap sent. ${who} (the demo runner) feels it in the demo; nothing is kept.` : done ? `Tap sent. ${who} finished, so it lands as a congratulation on their phone.` : `Tap sent. ${who} will feel it on their phone.`;
+  const done = !!out.body.finished, line = out.body.demo ? `Tap sent. ${who} (the demo ${(p && p.app) === 'windline' ? 'rider' : 'runner'}) feels it in the demo; nothing is kept.` : done ? `Tap sent. ${who} finished, so it lands as a congratulation on their phone.` : `Tap sent. ${who} will feel it on their phone.`;
   if (!p) return { text: `${line}\n\n${sponsor}`, structured: { view: 'tap', sent: true, finished: done, named: !!out.body.named, sponsor_line: sponsor }, map: null };
   const ans = await personAnswer(ctx, p, via);
   return { text: `${line}${out.body.named ? '' : ' (No name on it: connect your Windline or RunFast account, or tell me your first name, so they see who it was.)'}\n\n${ans.text}`,
@@ -301,7 +319,8 @@ export async function findPerson(ctx, args) {
   }
 
   // 2. names, searched on the servers (never a whole field pulled in): the race's own search when the event is live, else each app's
-  let people = [], scope = null, capped = false;
+  let people = [], scope = null, capped = false; const down = new Set(); // apps whose search didn't answer (timeout, 5xx, no connection)
+  const failed = (app, r) => { if (!r.ok && (r.status === 0 || r.status >= 500)) down.add(app); };
   const letters = q.replace(/[^A-Za-z]/g, '').length, demo = wantsDemo(q, event);
   if (demo) {
     for (const d of demoRaces(event || q)) { const r = await R.liveByCode(d.app, 'demo'), v = listOf(r.body)[0]; if (v) people.push({ ...norm(d.app, v), via: { code: 'demo' } }); }
@@ -311,11 +330,11 @@ export async function findPerson(ctx, args) {
     if (races.length) {
       scope = races.map((e) => e.name).join(' and ');
       const got = await Promise.all(races.map((e) => R.raceMap(e.app, e.id, q)));
-      got.forEach((r, i) => { const L = listOf(r.body); if (L.length >= 20) capped = true; L.forEach((v) => people.push(norm(races[i].app, v))); });
+      got.forEach((r, i) => { failed(races[i].app, r); const L = listOf(r.body); if (L.length >= 20) capped = true; L.forEach((v) => people.push(norm(races[i].app, v))); });
     } else {
       const got = await Promise.all(['windline', 'runfast'].map((a) => R.find(a, q)));
       for (let i = 0; i < 2; i++) {
-        const a = ['windline', 'runfast'][i], L = listOf(got[i].body); if (L.length >= 20) capped = true; // the apps list their demo people only while config/demo.listed is on (App Review), then never
+        const a = ['windline', 'runfast'][i], L = listOf(got[i].body); failed(a, got[i]); if (L.length >= 20) capped = true; // the apps list their demo people only while config/demo.listed is on (App Review), then never
         if (a === 'runfast' && L.length) { const full = await R.liveByPid(a, L.map((v) => v.pid).slice(0, 20)); const F = listOf(full.body); L.forEach((v) => { const x = F.find((y) => y.pid === v.pid); people.push(norm(a, x || { ...v, status: v.live ? 'live' : null })); }); }
         else L.forEach((v) => people.push(norm(a, v)));
       }
@@ -323,7 +342,8 @@ export async function findPerson(ctx, args) {
       scope = event || null;
     }
   }
-  if (handleLive) people.unshift(handleLive);
+  people.forEach((p) => { p.found = true; }); // found by name = they chose Findable: shown by their full name (Wes, 17 Oct: "how am I going to know who Megan N. is?")
+  if (handleLive) { handleLive.found = people.some((x) => x.app === handleLive.app && x.pid === handleLive.pid); people.unshift(handleLive); } // the handle's owner, also found by name: Findable, so by their full name
   people = people.filter((p, i, all) => all.findIndex((x) => x.app === p.app && x.pid === p.pid) === i);
   const narrowed = narrowBy(people, args); people = narrowed.out;
   if (handleHit) people = people.filter((p) => !(handleHit.person && shortName(p.name) === handleHit.person.name && p.event && (handleHit.live || []).some((x) => x.race === p.event.name)));
@@ -338,6 +358,10 @@ export async function findPerson(ctx, args) {
   const nameExact = people.filter((p) => closeness(p, q) === 3);
   if (people.length === 1 || (nameExact.length === 1 && words(q).length >= 2)) { const p = people.length === 1 ? people[0] : nameExact[0]; return personAnswer(ctx, p, p.via || null); }
 
+  if (!people.length && down.size) { // never "couldn't find anyone" when a server didn't answer: say so, and to try again
+    const t = `livedot couldn't reach ${[...down].map((a) => NAME[a]).join(' or ')} just now, so I can't say whether ${firstName(q).replace(/^(.)/, (c) => c.toUpperCase())} is racing. Try again in a moment.`;
+    return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, upstream_error: [...down] }, map: null };
+  }
   if (!people.length) {
     const why = letters < 3 && !demo ? 'Give me at least three letters of their name, or their livedot handle.' : `I couldn't find anyone called "${q}"${scope ? ' in ' + scope : event ? ` in "${event}" (it may not be live right now)` : ''} who is findable on a live race. Only people who chose to be findable show up in search; otherwise ask them for their livedot link (livedot.me/<handle>).`;
     const t = [why, ...narrowed.notes].join(' ');
@@ -347,7 +371,7 @@ export async function findPerson(ctx, args) {
   const total = people.length, label = `${total}${capped ? '+' : ''}`, top = people.slice(0, 5);
   const row = (p) => {
     const f = f0(p.event && p.event.tz), sh = sharesPosition(p);
-    return { id: idOf(p, p.via), name: shortName(p.name).replace(/\s*\(demo\)\s*$/i, ''), sport: SPORT[p.app], race: p.event ? p.event.name : null, status: p.status,
+    return { id: idOf(p, p.via), name: nameOf(p).replace(/\s*\(demo\)\s*$/i, ''), photo: photoFor(p), sport: SPORT[p.app], race: p.event ? p.event.name : null, status: p.status,
       km_now: sh ? +p.km.toFixed(1) : null, where: sh ? f.atShort(p.km) : p.status === 'finished' ? 'Finished' : p.status === 'waiting' ? 'Not started' : null,
       goal: p.goal && p.ghost && typeof p.ghost.diff === 'number' && sh ? (Math.abs(p.ghost.diff) < 30 ? 'on goal pace' : `${span(p.ghost.diff).replace(/ minutes?$/, ' min')} ${p.ghost.diff > 0 ? 'behind' : 'ahead of'} goal`) : null,
       pace: sh ? (p.app === 'runfast' ? (p.pace > 0 ? f.paceShort(3600 / p.pace) : null) : (p.speed > 0 ? f.speedShort(p.speed) : null)) : null,
@@ -392,11 +416,11 @@ export async function eventStatus(ctx, args) {
   const fin = L.filter((p) => p.status === 'finished').sort((a, b) => (a.finish || 0) - (b.finish || 0));
   const out = L.filter((p) => MOVING.includes(p.status)).sort((a, b) => (b.km || 0) - (a.km || 0));
   const started = e.started || (L.length ? Math.min(...L.map((p) => p.started || Infinity)) : null), total = (out[0] && out[0].total) || (cb && cb.km) || (e.leader && e.leader.total);
-  const leaders = [...fin.slice(0, 3).map((p) => ({ name: shortName(p.name), finished: hms(((p.finish || 0) - (p.started || 0)) / 1000) })), ...out.slice(0, 5 - Math.min(3, fin.length)).map((p) => (sharesPosition(p) ? { name: shortName(p.name), km: +p.km.toFixed(1), where: f.atShort(p.km) } : { name: shortName(p.name), km: null, where: 'on the course' }))]; // a km only where the public answer gives a position (KPMG C2: never near the start or finish, never stopped)
+  const leaders = [...fin.slice(0, 3).map((p) => ({ name: nameOf(p), photo: photoFor(p), finished: hms(((p.finish || 0) - (p.started || 0)) / 1000) })), ...out.slice(0, 5 - Math.min(3, fin.length)).map((p) => (sharesPosition(p) ? { name: nameOf(p), photo: photoFor(p), km: +p.km.toFixed(1), where: f.atShort(p.km) } : { name: nameOf(p), photo: photoFor(p), km: null, where: 'on the course' }))]; // a km only where the public answer gives a position (KPMG C2: never near the start or finish, never stopped)
   const nm = e.name, lines = [];
   lines.push(`${nm} is live` + (started && isFinite(started) ? `: under way for ${span((now - started) / 1000)} (it's ${clock(now, tz, f)} there)` : '') + '.');
   lines.push(`${count} ${count === 1 ? PERSON[app] : PERSON[app] + 's'} on livedot's map${fin.length ? `, ${fin.length} finished` : ''}.`);
-  if (out[0]) lines.push(sharesPosition(out[0]) ? `Out front: ${shortName(out[0].name)} at ${f.at(out[0].km)}${total ? ' of ' + f.dist(total) : ''}.` : `Out front: ${shortName(out[0].name)}, on the course.`);
+  if (out[0]) lines.push(sharesPosition(out[0]) ? `Out front: ${nameOf(out[0])} at ${f.at(out[0].km)}${total ? ' of ' + f.dist(total) : ''}.` : `Out front: ${nameOf(out[0])}, on the course.`);
   if (leaders.length) lines.push('Leaders on the public map: ' + leaders.map((x) => x.name + (x.finished ? ' (finished, ' + x.finished + ')' : ' (' + x.where + ')')).join(', ') + '.');
   const url = app === 'windline' ? `${SITE.windline}/live/race/${encodeURIComponent(e.id)}` : `${SITE.runfast}/live/race/${encodeURIComponent(e.id)}`;
   lines.push(`\nWatch the race live: ${url}`);
@@ -406,7 +430,7 @@ export async function eventStatus(ctx, args) {
     dots: out.slice(0, 60).filter(sharesPosition).map((p, i) => ({ lat: p.last.lat, lon: p.last.lon, lead: i === 0 })),
     headline: count + ' ' + (count === 1 ? PERSON[app] : PERSON[app] + 's') + ' on the map',
     stats: [{ k: 'Under way', v: started && isFinite(started) ? hms((now - started) / 1000).replace(/:\d\d$/, '') : '–', sub: 'h:min' }, { k: 'On the map', v: String(count) }, { k: 'Finished', v: String(fin.length) }],
-    leaders: leaders.map((x) => ({ k: x.name, v: x.finished ? 'Finished ' + x.finished : x.where })), follow: { url, label: 'Watch the race' }, sponsor, units: f.system, updated: 'Live · updated ' + ago(m.body && m.body.now || now, now) };
+    leaders: leaders.map((x) => ({ k: x.name, v: x.finished ? 'Finished ' + x.finished : x.where, photo: x.photo || null })), follow: { url, label: 'Watch the race' }, refresh: { tool: 'event_status', args: { event: nm, units: f.system } }, sponsor, units: f.system, updated: 'Live · updated ' + ago(m.body && m.body.now || now, now) };
   return { text, structured: S, map };
 }
 
@@ -420,3 +444,9 @@ export async function tourRouteTool(ctx, args) { return tourRoute(ctx, args, spo
 export async function tourNotesTool(ctx, args) { return tourNotes(ctx, args, sponsorLine(await sponsorName(ctx.R))); }
 /** The sponsor line, for livedot MCP's other tools (writes.js). */
 export async function sponsorLineFor(R) { return sponsorLine(await sponsorName(R)); }
+/** The sponsor's name and link (Windline's sponsor read: its counted link, windline.tech/go/platform; ProLend's own site if it can't be read). */
+export const SPONSOR_SITE = 'https://pro-lend.co.za';
+export async function sponsorInfo(R) {
+  return held('sponsor-info', 10 * 6e4, async () => { const r = await R.sponsor(), x = r.ok && r.body && r.body.sponsor; return { name: (x && x.name) || SPONSOR_FALLBACK, url: x && /^https:\/\//.test(String(x.url || '')) ? x.url : SPONSOR_SITE }; })
+    .catch(() => ({ name: SPONSOR_FALLBACK, url: SPONSOR_SITE }));
+}

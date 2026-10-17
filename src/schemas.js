@@ -32,6 +32,8 @@ const PERSON = {
   sport: S('cycling or running.'),
   status: S('live, delayed, nosignal, paused, waiting, finished or stopped.'),
   race: SN('The race they are in, or null for a ride of their own.'),
+  photo: SN('Their profile picture (from windline.tech or runfast.tech), only for someone shown by their full name (Findable).'),
+  can_tap: B('A tap on the back would reach them now (taps on; live or in the day after the finish; this asker may tap).'),
   follow_url: S('The public Follow live link.'),
   units: { type: 'string', enum: ['metric', 'imperial'], description: 'The units the text answer uses.' },
   position: O('Only when the public live page shows where they are: km, mile, of_km, percent, seen (ISO time).'),
@@ -80,7 +82,7 @@ export const OUTPUT_SCHEMAS = {
     beta: B('tour_notes is in beta.'), tour: SN('The tour\'s name.'), notes: SN('The organiser\'s notes for riders, in their words (markdown); null when there are none.'),
     notes_updated: SN('When the notes last changed (ISO).'), url: SN('The tour\'s page.'), tours: A('Several tours matched: their names. Ask which one.'),
   }, 'A cycling tour\'s notes for riders, as the organiser wrote them.'),
-  plan_route: out(['plan_route'], { ...EVENT_WEATHER, tz: S('The route\'s IANA time zone.'), km: N('The route\'s length in km.'), order: X('Several files: how the days were ordered (numbers, map or upload).'), order_note: X('When the file numbers and the map disagree: what was chosen.'), files: X('Several files: the file of each day, in order.') }, 'The weather along a route at the time you\'d ride or run it.'),
+  plan_route: out(['plan_route'], { ...EVENT_WEATHER, tz: S('The route\'s IANA time zone.'), km: N('The route\'s length in km.'), order: X('Several files: how the days were ordered (numbers, map or upload).'), order_note: X('When the file numbers and the map disagree: what was chosen.'), files: X('Several files: the file of each day, in order.'), flyover: B('The map flies over the route in the chat.'), fly_3d: X('A link to the full 3D flight, only for a route with a public page; else null.') }, 'The weather along a route at the time you\'d ride or run it.'),
 };
 const WRITE = (views, description) => out(views, {
   app: SN('The account\'s app: windline or runfast.'),

@@ -9,7 +9,7 @@ import { WL } from './gen/engine.js';
 import { EVENTS } from './gen/events.js';
 import { SITE, DEMOS, getJson } from './reads.js';
 import { colourOf, KEY, HEAT_WORDS } from './weather.js';
-import { clock } from './words.js';
+import { clock, ago } from './words.js';
 
 
 const HISTORIC = 'https://windline.tech/api/historic';
@@ -134,7 +134,7 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
   }));
   const ok = days.filter((x) => x.w), hist = ok.some((x) => x.w.source === 'historic'), fcst = ok.some((x) => x.w.source === 'apple');
   const ages = ok.map((x) => x.w.fetched).filter((t) => isFinite(t) && t > 0), fetchedAt = ages.length ? Math.min(...ages) : null; // the oldest forecast read shown
-  const age = fetchedAt ? 'Forecast updated ' + Math.max(1, Math.round((now - fetchedAt) / 6e4)) + ' min ago' : null;
+  const age = fetchedAt ? 'Forecast updated ' + (now - fetchedAt < 6e4 ? '1 min ago' : ago(fetchedAt, now)) : null; // "12 min ago", "3 h 5 min ago" (words.js)
   if (!ok.length) return { text: `I couldn't get the weather for ${P.name} just now. Try again in a moment.\n\n` + sponsorLine, structured: { view: 'none' }, map: null };
 
   const label = hist && !fcst ? 'Based on 10 years of weather on this date (Copernicus ERA5, 2015–2024), not a forecast.' : fcst && !hist ? 'Forecast from Apple Weather, timed to the course.' : 'The forecast for the days inside 10 days; 10 years of weather on this date for the rest.';
@@ -158,7 +158,6 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
   });
   if (P.extraLines) P.extraLines.forEach((l) => lines.push(l));
   lines.push(`Timed for ${P.timedFor}.`);
-  if (age) lines.push(age + '.');
   if (hist) lines.push('Weather records: Copernicus ERA5 (contains modified Copernicus Climate Change Service information).');
   lines.push(`\nMore: ${P.url}`);
   const text = lines.join(' ').replace(/ \nMore:/, '\nMore:') + '\n\n' + sponsorLine;

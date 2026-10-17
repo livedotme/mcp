@@ -104,7 +104,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
 | `tap_on_the_back` | A tap on the back for someone racing live (only when you ask): it buzzes on their phone, through the same tap and rules as their follow page; in the day after their finish, a congratulation. Signed in, it carries your name; if not, the first name you give. |
-| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. No account. |
+| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. The map flies over your route in the chat, coloured by the weather; for a 3D flight and a video, save it as a private ride or run. No account. |
 
 ### For organisers and club admins (sign in)
 

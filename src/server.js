@@ -8,12 +8,18 @@ import { WIDGET_HTML } from './gen/widget.js';
 import { WL_VERSION } from './gen/engine.js';
 import { landing } from './landing.js';
 import { WRITE_TOOLS, SCOPE, NeedAuth, planRoute, writeTool, RESOURCE_META as PRM_URL } from './writes.js';
-import { sponsorLineFor } from './tools.js';
+import { sponsorLineFor, sponsorInfo } from './tools.js';
+import { ago } from './words.js';
 import { OUTPUT_SCHEMAS, promptList, promptGet } from './schemas.js';
+import { BUILD } from './gen/build.js';
+import { parseLink } from './tools.js';
 
 export const VERSION = '1.0.0';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const WIDGET_URI = 'ui://livedot/live-map.html';
+// the widget's address carries the build (Wes, 17 Oct: ChatGPT keeps a widget by its address, so every deploy must name a new one);
+// the old address and any earlier build's still read, and always get today's widget
+const LEGACY_URI = 'ui://livedot/live-map.html', WIDGET_URI = `ui://livedot/live-map.${BUILD}.html`;
+const isWidgetUri = (u) => u === WIDGET_URI || u === LEGACY_URI || /^ui:\/\/livedot\/live-map\.[0-9a-z]{3,40}\.html$/.test(String(u || ''));
 const ICON = 'https://livedot.me/brand/icon.svg', ICON_PNG = 'https://livedot.me/brand/png/icon-512.png';
 
 const UNITS = { type: 'string', enum: ['metric', 'imperial'], description: 'Pass the asker\'s units: imperial for users in the US, UK road distances, Liberia or Myanmar, or when they ask in miles/°F; otherwise metric.' };
@@ -104,7 +110,7 @@ export const TOOLS = [
     title: 'Fly the course',
     description: 'Fly over a race course inline: "Fly the Comrades", "Show me the course", "What does the NYC Marathon route look like?". '
       + 'Returns a flyover of the course on a map that plays in the chat, coloured by the weather along it (the live forecast within 10 days of the start, 10 years of weather on that date beyond it, as event_weather), with a "Fly it in 3D" link to the full Fly the route and the event\'s livedot page. '
-      + 'If several events match it lists them: ask which one.',
+      + 'If several events match it lists them: ask which one. For a route the user gave as a GPX file or link (their own route), use plan_route: it flies over that route too.',
     inputSchema: {
       type: 'object',
       properties: { event_or_route: { type: 'string', description: 'The event or route, e.g. "Comrades", "NYC Marathon", "Gravel Burn".' }, year: { type: 'integer', description: 'The edition\'s year, if named.' }, units: UNITS },
@@ -169,7 +175,7 @@ const RESOURCE = {
 };
 // The widget reads only these: MapLibre from unpkg, OpenFreeMap's light (positron) basemap, the open terrain tiles the flyover's hills
 // come from (AWS Terrain Tiles, as RunFast's Fly), livedot's typeface. Never a per-tile map key.
-const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'] };
+const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://windline.tech', 'https://runfast.tech', 'https://weatherkit.apple.com'] }; // the apps' own hosts (people's profile pictures); Apple's Weather mark, as Apple supplies it
 const RESOURCE_META = {
   ui: { csp: CSP, prefersBorder: true },
   'openai/widgetCSP': { connect_domains: CSP.connectDomains, resource_domains: CSP.resourceDomains },
@@ -243,8 +249,43 @@ function signupLine(out, sponsor) {
 /** The assistant's own anonymous id for its user (ChatGPT's openai/subject), hashed here before it goes anywhere: a tap's tapper. */
 async function sha256hex(s) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
 
+// ---------------------------------------------------------------- livedot misses (Wes, 17 Oct: "self-healing"; KPMG GO on the design)
+// When a read tool finds nobody, matches nothing, or an app server fails or times out, a short note goes to Windline (POST /api/mcp/miss,
+// the proxy secret; mcpMisses, 14 days), for HQ's "livedot misses". What it holds: the tool, what was asked and the event (80 characters
+// each, a follow link's code never), the outcome, the counts, which app servers were asked and how they answered, the time, this build.
+// Never an address, an account, the assistant's user id, a token. Sent after the answer (waitUntil), and never in the way of one.
+const MISS_TOOLS = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back']);
+const cap80 = (s) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+/** What was asked, as typed, but never a follow link's code (it lets its holder tap): those become "[follow link]". */
+function askedOf(a) {
+  const raw = a.name_or_handle || a.handle || a.person || a.event_or_route || a.tour || a.event || (a.code || a.link ? '[follow link]' : '');
+  const s = String(raw || ''), L = parseLink(s);
+  if (L && L.code) return '[follow link]';
+  if (/^(windline|runfast):f:/.test(s)) return s.replace(/:f:.*/, ':f:[follow link]');
+  return cap80(s);
+}
+/** The note for a miss, or null when the answer wasn't one (a list to choose from, a question back, an answer). */
+export function missOf(name, args, out, trace, forced) {
+  const S = (out && out.structured) || {}, slow = trace.find((t) => t.timeout), err = trace.find((t) => !t.timeout && (t.status === 0 || t.status >= 500));
+  const outcome = slow ? `timeout:${slow.app}` : err ? `upstream_error:${err.app}:${err.status}` : forced || (S.view === 'none' && trace.length && !Array.isArray(S.races) && !Array.isArray(S.events) && !Array.isArray(S.tours) ? 'none' : null);
+  if (!outcome) return null;
+  const servers = [];
+  for (const t of trace) { const st = t.timeout ? 'timeout' : t.status, x = servers.find((y) => y.app === t.app); if (!x) servers.push({ app: t.app, statuses: [st] }); else if (!x.statuses.includes(st) && x.statuses.length < 6) x.statuses.push(st); }
+  const results = Array.isArray(S.people) ? S.people.length : S.view && S.view !== 'none' ? 1 : 0;
+  return { tool: name, q: askedOf(args || {}), event: cap80(args && !['event_status', 'event_weather'].includes(name) ? args.event : ''), outcome, counts: { results, asked: trace.length }, servers, at: Date.now(), build: BUILD };
+}
+function noteMiss(env, rq, name, args, out, trace, forced) {
+  const m = missOf(name, args, out, trace, forced); if (!m || !env.MCP_PROXY_SECRET) return;
+  const p = fetch(`${reads(env).H.mcp}/miss`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Livedot-Proxy': env.MCP_PROXY_SECRET }, body: JSON.stringify(m), signal: AbortSignal.timeout(4000) }).catch(() => null);
+  if (rq && rq.waitUntil) rq.waitUntil(p); // after the answer (Cloudflare keeps it alive); without it (a test) it just runs
+}
+
+const APPLE_LEGAL = 'https://weatherkit.apple.com/legal-attribution.html';
+/** The sponsor line's name as a markdown link, when the answer ends with it. */
+function linkSponsor(text, sp) { const t = String(text || ''), k = `free thanks to ${sp.name}.`; return sp.url && t.endsWith(k) ? `${t.slice(0, -k.length)}free thanks to [${sp.name}](${sp.url}).` : t; }
+
 async function call(name, args, meta, env, rq = {}) {
-  const R = reads(env), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
+  const trace = [], R = reads(env, trace), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
   const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool, tap_on_the_back: tapOnTheBack }[name];
   let out;
   try {
@@ -255,10 +296,21 @@ async function call(name, args, meta, env, rq = {}) {
   } catch (e) {
     if (e instanceof NeedAuth) throw e;
     if (e && e.status) return { isError: true, content: [{ type: 'text', text: e.message + '\n\n' + (await sponsorLineFor(R)) }], structuredContent: { view: 'none', error: e.message } };
+    if (MISS_TOOLS.has(name)) noteMiss(env, rq, name, args, null, trace, 'error');
     throw e;
   }
+  if (MISS_TOOLS.has(name)) noteMiss(env, rq, name, args, out, trace);
+  // whose weather it is (WeatherKit's terms: the Apple Weather mark and its legal page wherever Apple's data shows; ERA5 history credits
+  // Copernicus), and when it was fetched; and the sponsor's name as a link (Wes, 17 Oct)
+  const sp = await sponsorInfo(R), line = await sponsorLineFor(R), Sx = out.structured || {};
+  const apple = !!(out.map && /Apple Weather/.test(String(out.map.updated || ''))) || (Sx.basis && Sx.basis !== 'historic' && Sx.forecast_updated);
+  if (apple && out.text && !/^Weather: \[Apple Weather\]/m.test(out.text)) {
+    const t = Sx.forecast_updated ? Date.parse(Sx.forecast_updated) : null, w = `Weather: [Apple Weather](${APPLE_LEGAL})${t ? ` (updated ${Date.now() - t < 6e4 ? '1 min ago' : ago(t, Date.now())})` : ''}.`;
+    out.text = out.text.endsWith(line) ? `${out.text.slice(0, -line.length).replace(/\s*$/, '')}\n${w}\n\n${line}` : `${out.text}\n${w}`;
+  }
+  if (out.map) { out.map.sponsorName = sp.name; out.map.sponsorUrl = sp.url; out.map.appleLegal = APPLE_LEGAL; }
   if (!ctx.authorization && FREE.has(name) && out.structured && out.structured.view !== 'none') signupLine(out, await sponsorLineFor(R));
-  const res = { content: [{ type: 'text', text: out.text }], structuredContent: { view: 'none', ...(out.structured || {}) } };
+  const res = { content: [{ type: 'text', text: linkSponsor(out.text, sp) }], structuredContent: { view: 'none', ...(out.structured || {}) } };
   if (out.map) res._meta = { 'livedot/view': out.map };
   return res;
 }
@@ -299,8 +351,8 @@ export async function rpc(msg, env = {}, rq = {}) {
       case 'resources/templates/list': return ok(id, { resourceTemplates: [] });
       case 'resources/read': {
         if (params.uri === GUIDE_URI) return ok(id, { contents: [{ uri: GUIDE_URI, mimeType: 'text/markdown', text: `${GUIDE}\n*${await sponsorLineFor(reads(env))}*\n` }] });
-        if (params.uri !== WIDGET_URI) return err(id, -32002, 'Resource not found');
-        return ok(id, { contents: [{ uri: WIDGET_URI, mimeType: RESOURCE.mimeType, text: WIDGET_HTML, _meta: RESOURCE_META }] });
+        if (!isWidgetUri(params.uri)) return err(id, -32002, 'Resource not found');
+        return ok(id, { contents: [{ uri: params.uri, mimeType: RESOURCE.mimeType, text: WIDGET_HTML, _meta: RESOURCE_META }] });
       }
       case 'prompts/list': return ok(id, { prompts: promptList() });
       case 'prompts/get': {
@@ -327,7 +379,7 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 
 
 /** The whole server: POST JSON-RPC (one message or a batch); GET is this page for a browser and 405 for an event stream. */
-export async function handle(request, env = {}) {
+export async function handle(request, env = {}, waitUntil = null) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method === 'GET' || request.method === 'HEAD') {
     if (/text\/event-stream/.test(request.headers.get('Accept') || '')) return new Response(null, { status: 405, headers: { Allow: 'POST', ...CORS } });
@@ -343,7 +395,7 @@ export async function handle(request, env = {}) {
   // who's asking: their token (passed on to the app's server, never kept here), and their own address for the route reader's limit
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const rq = { prm: env.MCP_ISSUER ? `${env.MCP_ISSUER}/.well-known/oauth-protected-resource/mcp` : null, authorization: /^Bearer\s+\S+$/.test(request.headers.get('Authorization') || '') ? request.headers.get('Authorization') : null, ua: request.headers.get('User-Agent') || '',
-    proxy: env.MCP_PROXY_SECRET && ip ? { 'X-Livedot-Proxy': env.MCP_PROXY_SECRET, 'X-Livedot-Client-Ip': ip } : null };
+    proxy: env.MCP_PROXY_SECRET && ip ? { 'X-Livedot-Proxy': env.MCP_PROXY_SECRET, 'X-Livedot-Client-Ip': ip } : null, waitUntil };
   const unauthorized = (e) => new Response(JSON.stringify(err(e.id, -32001, e.message)), { status: 401, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'WWW-Authenticate': e.challenge, ...CORS, 'Access-Control-Expose-Headers': 'WWW-Authenticate, Mcp-Session-Id, Mcp-Protocol-Version' } });
   if (Array.isArray(body)) {
     if (!body.length || body.length > 10) return json(err(null, -32600, 'Invalid Request'), 400);
