@@ -173,7 +173,7 @@ const withSponsor = (j, sponsorLine, view) => ({ text: `${j.text}\n\n${sponsorLi
 const DAY_COLOURS = ['#635BFF', '#1E9BD7', '#2FBF8F', '#F5A524', '#E5484D', '#8E4EC6', '#0EA5A4', '#B54708'];
 const hav = (a, b) => { const r = Math.PI / 180, x = Math.sin((b[0] - a[0]) * r / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin((b[1] - a[1]) * r / 2) ** 2; return 12742 * Math.asin(Math.min(1, Math.sqrt(x))); };
 const thou = (n) => Math.round(n).toLocaleString('en-US');
-/** The widget's view of a new draft: the days with their distance, climbing and start, the whole route coloured day by day,
+/** The widget's view of a new draft (create_event, post_club_ride): the days with their distance, climbing and start, the whole route coloured day by day,
  *  "Draft · Publish when you're ready" and Open in Windline (or RunFast). Every number is the route reader's and the app's answer. */
 function draftView(ctx, ev, S, sponsorLine) {
   const { tz, days } = ev, run = ev.type === 'run', app = (S && S.app) || (run ? 'runfast' : 'windline'), f = ctx.f0(tz), imp = f.system === 'imperial';
@@ -190,7 +190,7 @@ function draftView(ctx, ev, S, sponsorLine) {
   });
   const total = along || 1, colour = (i) => (multi ? DAY_COLOURS[i % DAY_COLOURS.length] : run ? '#EE7A1F' : '#635BFF');
   const km = days.reduce((s, d) => s + (d.km || 0), 0), up = days.reduce((s, d) => s + (d.climb || 0), 0);
-  const word = run ? (ev.race ? 'Race' : 'Run') : ({ tour: 'Tour', race: 'Race', ride: 'Ride' })[ev.type] || 'Event';
+  const word = ev.club ? (run ? 'Club run' : 'Group ride') : run ? (ev.race ? 'Race' : 'Run') : ({ tour: 'Tour', race: 'Race', ride: 'Ride' })[ev.type] || 'Event';
   const first = days[0], last = days[days.length - 1], note = 'Draft · Publish when you’re ready';
   const stats = [{ k: multi ? 'First day' : 'Start', v: clock(Date.parse(first.start), tz, f), sub: ev.weekly ? 'Every week from ' + date(first.start, { day: 'numeric', month: 'short' }) : date(first.start, { day: 'numeric', month: 'short', year: 'numeric' }) }];
   if (multi) stats.push({ k: 'Last day', v: clock(Date.parse(last.start), tz, f), sub: date(last.start, { day: 'numeric', month: 'short', year: 'numeric' }) });
@@ -224,7 +224,8 @@ export async function writeTool(ctx, name, args, sponsorLine) {
       route: { pts: days[0].pts, km: days[0].km, climb: days[0].climb }, place: a.place, pace: a.pace, club: a.club || a.page,
     };
     const res = withSponsor(await tool(ctx, name, out), sponsorLine, name === 'post_club_ride' ? 'club_ride' : 'created');
-    if (name === 'create_event') res.map = draftView(ctx, { name: a.name, type, race: !!a.race, tz, days, weekly }, res.structured, sponsorLine);
+    const club = name === 'post_club_ride', app = res.structured && res.structured.app; // a club ride on Windline, a club run on RunFast: the account's app
+    res.map = draftView(ctx, { name: a.name, type: club ? (app === 'runfast' ? 'run' : 'ride') : type, race: !club && !!a.race, club, tz, days, weekly }, res.structured, sponsorLine);
     return res;
   }
   if (name === 'update_event' || name === 'add_tour_notes' || name === 'publish_event') return withSponsor(await tool(ctx, name, { ...a, id: a.event_id }), sponsorLine, name);

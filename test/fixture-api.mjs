@@ -140,7 +140,7 @@ function mcpStub(req, res, p, raw) {
     return j(200, { ok: true, routes: [{ name: 'Test loop', from: nm ? nm[1] : '', to: nm ? nm[2] : '', km: Math.round(km * 10) / 10, climb: cl ? +cl[1] : 0, pts }] });
   }
   const m = p.match(/^\/tool\/(\w+)$/);
-  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1', ...(m[1] === 'create_event' ? { type: 'tour', status: 'draft', dashboard: 'https://app.windline.tech/#/e/ev1' } : {}) } }); }
+  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1', ...(m[1] === 'create_event' || m[1] === 'post_club_ride' ? { type: m[1] === 'create_event' ? 'tour' : 'ride', status: 'draft', dashboard: 'https://app.windline.tech/#/e/ev1' } : {}) } }); }
   return j(404, { ok: false, error: 'Not found' });
 }
 export const MCP_SEEN = [];

@@ -138,7 +138,7 @@ export const TOOLS = [
 TOOLS.forEach((t) => { t.securitySchemes = [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; });
 TOOLS.push(...WRITE_TOOLS);
 { const pr = TOOLS.find((t) => t.name === 'plan_route'); pr._meta = { ...uiMeta('Reading your route…', 'Weather ready'), ...pr._meta }; } // plan_route draws the weather map
-{ const ce = TOOLS.find((t) => t.name === 'create_event'); ce._meta = { ...uiMeta('Creating the draft…', 'Draft ready'), ...ce._meta }; } // create_event draws the draft's card
+for (const n of ['create_event', 'post_club_ride']) { const t = TOOLS.find((x) => x.name === n); t._meta = { ...uiMeta('Creating the draft…', 'Draft ready'), ...t._meta }; } // both draw the draft's card
 // every tool says what its structuredContent looks like (schemas.js), so a client can check the answer
 TOOLS.forEach((t) => { if (!OUTPUT_SCHEMAS[t.name]) throw new Error('No outputSchema for ' + t.name); t.outputSchema = OUTPUT_SCHEMAS[t.name]; });
 
