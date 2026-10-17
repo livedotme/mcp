@@ -98,7 +98,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `event_status` | How a live race is going: how long it's been under way, how many are on the map, how many finished, who's in front. |
 | `event_weather` | Race-day weather along the course at the times people get there. Inside 10 days, the live forecast; beyond, 10 years of weather on the date, labelled as history. |
 | `fly_route` | A flyover of the course in the chat, coloured by the weather along it, with **Fly it in 3D**. |
-| `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. Route files only when the organiser shares them. |
+| `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. A GPX link for each day only when the organiser shares route files; otherwise it says so. |
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
 Every tool takes `units`: `metric` or `imperial`. Without it, the asker's region decides (ChatGPT sends it); with neither, the event's country leads and the other system follows in brackets: “km 79 (mile 49)”. All tools are read-only (`readOnlyHint`).

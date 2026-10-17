@@ -25,7 +25,7 @@ try {
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
     assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes']);
-    t.filter((x) => x.name !== 'tour_notes').forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
+    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => x.name !== 'tour_notes').forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
     const b = await post([{ jsonrpc: '2.0', id: 4, method: 'ping' }, { jsonrpc: '2.0', method: 'notifications/initialized' }]); assert.equal(b.body.length, 1);
@@ -101,8 +101,8 @@ try {
   });
   await test('tour_route by organiser ("Alistair\'s Durban tour"): the days, the weather, route files on', async () => {
     const r = await call('tour_route', { tour: 'Alistair\'s Durban tour' }), t = r.content[0].text, s = r.structuredContent;
-    assert.equal(s.view, 'tour_route'); assert.equal(s.route_files, true); assert.match(t, /Day 1: Pietermaritzburg to Hillcrest/); assert.match(t, /Route button on the tour page: https:\/\/tour\.windline\.tech\/alistairs-durban-tour-2027/); assert.match(t, /Based on 10 years/); assert.match(t, SPONSOR);
-    const a = await call('tour_route', { tour: 'AllyCat' }); assert.match(a.content[0].text, /The organiser hasn't made the route files available\./); assert.equal(a.structuredContent.route_files, false); assert.ok(!/GPX/.test(a.content[0].text));
+    assert.equal(s.view, 'tour_route'); assert.equal(s.route_files, true); assert.match(t, /Day 1: Pietermaritzburg to Hillcrest/); assert.match(t, /- Day 1: https:\/\/windline\.tech\/api\/event\/tour\/alistairs-durban-tour-2027\/day\/1\.gpx/); assert.match(t, /- Day 2: .*\/day\/2\.gpx/); assert.equal(s.gpx.length, 2); assert.match(t, /Based on 10 years/); assert.match(t, SPONSOR);
+    const a = await call('tour_route', { tour: 'AllyCat' }); assert.match(a.content[0].text, /The organiser hasn't made the route files available\./); assert.equal(a.structuredContent.route_files, false); assert.ok(!/\.gpx/.test(JSON.stringify(a)));
   });
   await test('tour_notes (beta): the organiser\'s words, quoted; none written: said so', async () => {
     const r = await call('tour_notes', { tour: 'Alistair\'s Durban Tour 2027', question: 'What should I pack?' }); assert.match(r.content[0].text, /> - Two bidons/); assert.match(r.content[0].text, /last updated 15 October 2026/); assert.match(r.content[0].text, /own words/); assert.match(r.content[0].text, SPONSOR);

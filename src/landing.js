@@ -8,7 +8,7 @@ const EXAMPLES = [
   { q: '“The one with livedot.me/megan.”', a: 'Megan N. is at km 58 of 90, 18 minutes behind her 9:00 goal, running 6:20 per km. Where she is: 31°, calm, rated very hard for the heat. At this pace she finishes around 11:43. Follow live: livedot.me/megan', img: 'picker-to-map', alt: 'Megan’s live map: the course coloured by how hard the weather makes it, her dot at km 58, her goal, pace, finish time and the road ahead' },
   { q: 'Fly the Comrades', a: 'Here’s the course from the air, 90 km, coloured by how hard the heat makes each stretch at a runner’s pace. Press play to fly it, or Fly it in 3D.', img: 'fly-comrades', alt: 'A flyover of the Comrades course in the chat, the camera following the road with the heat along it' },
   { q: 'What will the weather be like for the Comrades?', a: 'Rated Tough: heat stress High from km 12 and Extreme from km 30, about 20° at the start and 27° at the finish. The forecast inside 10 days; 10 years of weather on the date beyond.', img: 'weather-forecast', alt: 'Race-day weather for the Comrades: the course coloured by the heat, the start time, temperatures, heat stress and rain' },
-  { q: 'What’s Alistair’s Durban Tour 2027 route? Give me the GPX files.', a: 'Two days, 95 km: Pietermaritzburg to Hillcrest, then Hillcrest to Durban, with the climbing, start times and 10 years of weather on the dates. The organiser shares the route files: GPX or Garmin .fit from the tour page.', img: 'tour-route', alt: 'A cycling tour’s two days on a map, each rated for the weather, with a Route files button' },
+  { q: 'What’s Alistair’s Durban Tour 2027 route? Give me the GPX files.', a: 'Two days, 95 km: Pietermaritzburg to Hillcrest, then Hillcrest to Durban, with the climbing, start times and 10 years of weather on the dates. The organiser shares the route files: a GPX link for each day.', img: 'tour-route', alt: 'A cycling tour’s two days on a map, each rated for the weather, with a Route files button' },
 ];
 const TOOLS = [
   ['find_person', 'Finds someone racing live by name, livedot handle or follow link. One clear match answers at once; several become a picker, and the assistant asks one short question instead of guessing.'],
@@ -16,7 +16,7 @@ const TOOLS = [
   ['event_status', 'How a live race is going: how long it’s been under way, how many are out, who’s in front.'],
   ['event_weather', 'Race-day weather along the course at the times people get there: the live forecast inside 10 days, 10 years of weather on the date beyond.'],
   ['fly_route', 'A flyover of the course in the chat, coloured by the weather along it, with Fly it in 3D.'],
-  ['tour_route', 'A Windline cycling tour, day by day, with the weather, and the route files when the organiser shares them.'],
+  ['tour_route', 'A Windline cycling tour, day by day, with the weather, and a GPX link for each day when the organiser shares route files.'],
   ['tour_notes', 'Beta: a tour organiser’s own notes for riders (what to pack, meeting points), quoted in their words.'],
 ];
 

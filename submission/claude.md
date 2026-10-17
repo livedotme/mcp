@@ -16,4 +16,4 @@
 - Tool descriptions say what each tool does and when to use it; they ask the model to ask one short question rather than guess between people.
 - The UI is an MCP Apps resource (`ui://livedot/live-map.html`, `text/html;profile=mcp-app`) with a declared CSP.
 
-**Risk to settle first:** the descriptions ask the model to end with the sponsor line "word for word" (see [README.md](README.md)).
+**The sponsor line:** it's in each tool result's text and the widget's footer, as attribution; no tool description tells the model to repeat it.

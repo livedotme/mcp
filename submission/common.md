@@ -29,7 +29,7 @@ livedot covers cycling races on Windline and running races on RunFast. The weath
 
 These use the apps' demo races (always live) and published data, so they work any day.
 
-1. **"Where's the demo runner in the Comrades demo?"** → `find_person`. One person, Megan N. (demo), answered at once: "Megan N. (demo) is at km … of 90 km in the Comrades (demo) … Where Megan is: …° … At this pace Megan finishes around …", a Follow live link, the live map (course, dot, the heat along it), ending "Live tracking, proudly brought to you free thanks to ProLend."
+1. **"Where's the demo runner in the Comrades demo?"** → `find_person`. One person, Megan N. (demo), answered at once: "Megan N. (demo) is at km … of 90 km in the Comrades (demo) … Where Megan is: …° … At this pace Megan finishes around …", a Follow live link and the live map (course, dot, the heat along it). The tool's text ends with "Live tracking, proudly brought to you free thanks to ProLend."
 2. **"How's the Coast Classic demo going?"** → `event_status`. "Coast Classic (demo) is live: under way for … 150 riders on livedot's map. Out front: … Leaders on the public map: …", the race map with the leaders' dots, Watch the race.
 3. **"Fly the Comrades"** → `fly_route`. "Here's the Comrades Marathon (demo) course from the air: 90 km (56 mi), with the weather along it." The widget flies the course; Fly it in 3D and Open on livedot.
 4. **"What will the weather be like for the NYC Marathon?"** → `event_weather`. Before 22 Oct 2026: "Based on 10 years of weather on this date (Copernicus ERA5, 2015–2024), not a forecast. Rated Good …" From 22 Oct: "Forecast from Apple Weather, timed to the course." Links to livedot.me/guides/nyc-marathon-2026-weather/.

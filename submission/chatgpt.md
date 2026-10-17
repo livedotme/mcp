@@ -17,4 +17,4 @@
 - Links out: Follow live, Fly it in 3D and the event pages open through `openai.openExternal` (livedot.me, windline.tech, runfast.tech, tour./event.windline.tech, app.windline.tech).
 - Personal data: public, findable people only; no position when stopped or near the start or finish; nothing stored about the asker.
 
-**Risk to settle first:** the sponsor line (see [README.md](README.md)).
+**The sponsor line:** it's in each tool result's text and the widget's footer, as attribution; no tool description tells the model to repeat it.

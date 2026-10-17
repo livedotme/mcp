@@ -28,7 +28,7 @@ export const TOOLS = [
       + 'Pass what the user gave, as they wrote it: a name, a livedot handle (@megan, livedot.me/megan) or a follow link, and the race if they named one. '
       + 'One clear match (a handle, or a full name that fits one person) returns the live answer at once: where they are, time against their goal, finish time, the weather there, and a live map. '
       + 'Several matches return the 5 most likely and the total. Then ask the user ONE short question (surname or initial, bib or club) and call again with it, or call where_is with the person id they pick. Never guess between people. '
-      + 'Only people who chose to be findable, on public races, can be found. End your answer with the sponsor line from the result, word for word.',
+      + 'Only people who chose to be findable, on public races, can be found.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -52,7 +52,7 @@ export const TOOLS = [
     title: 'Where someone is in a live race',
     description: 'Where someone is right now in a live race, and the weather they\'re in: km and mile on the course, time against their goal, pace, the finish time it points to, the temperature and wind there (headwind, tailwind or side-on) with the Windline forecast engine\'s rating, the wind and heat over the next few km, and a live map with a Follow live button. '
       + 'Use it with the person id find_person returned, or straight away with a livedot handle or follow link the user gave. '
-      + 'It answers only what the public live page shows: if they\'re paused, stopped, near the start or finish, or not sharing, it says it can\'t share where they are; say so plainly. End your answer with the sponsor line from the result, word for word.',
+      + 'It answers only what the public live page shows: if they\'re paused, stopped, near the start or finish, or not sharing, it says it can\'t share where they are; say so plainly.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -70,7 +70,7 @@ export const TOOLS = [
     name: 'event_status',
     title: 'How a live race is going',
     description: 'How a live race on livedot is going: whether it\'s live, how long it has been under way, how many people are on the map, how many have finished, who\'s out front and the leaders where the public race map shows them, with a live map. '
-      + 'For "How\'s the Comrades going?" or "Who\'s leading the Coast Classic?". If several races match it lists them: ask the user which one. Try "Comrades demo" or "Coast Classic demo" to see it work any time. End your answer with the sponsor line from the result, word for word.',
+      + 'For "How\'s the Comrades going?" or "Who\'s leading the Coast Classic?". If several races match it lists them: ask the user which one. Try "Comrades demo" or "Coast Classic demo" to see it work any time.',
     inputSchema: {
       type: 'object',
       properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, units: UNITS },
@@ -86,7 +86,7 @@ export const TOOLS = [
     description: 'What the weather will be like for a cycling or running event, for the people taking part: "What will the weather be like for the NYC Marathon?", "Weather for the Comrades demo?". '
       + 'Within 10 days of the start: the live forecast (Apple Weather) along the course at the times the riders or runners get to each stretch, with the Windline forecast engine\'s rating (Good, Fair, Tough) and why, the headwind and tailwind stretches, heat stress and rain. '
       + 'Further out: 10 years of weather on that date (Copernicus ERA5), clearly labelled as history, not a forecast. With a map of the course coloured by the wind or the heat, and a link to the event\'s livedot page. '
-      + 'If several events match it lists them: ask which one. End your answer with the sponsor line from the result, word for word.',
+      + 'If several events match it lists them: ask which one.',
     inputSchema: {
       type: 'object',
       properties: { event: { type: 'string', description: 'The event\'s name, e.g. "NYC Marathon", "Gravel Burn", "Comrades demo".' }, year: { type: 'integer', description: 'The edition\'s year, if the user named one.' }, units: UNITS },
@@ -101,7 +101,7 @@ export const TOOLS = [
     title: 'Fly the course',
     description: 'Fly over a race course inline: "Fly the Comrades", "Show me the course", "What does the NYC Marathon route look like?". '
       + 'Returns a flyover of the course on a map that plays in the chat, coloured by the weather along it (the live forecast within 10 days of the start, 10 years of weather on that date beyond it, as event_weather), with a "Fly it in 3D" link to the full Fly the route and the event\'s livedot page. '
-      + 'If several events match it lists them: ask which one. End your answer with the sponsor line from the result, word for word.',
+      + 'If several events match it lists them: ask which one.',
     inputSchema: {
       type: 'object',
       properties: { event_or_route: { type: 'string', description: 'The event or route, e.g. "Comrades", "NYC Marathon", "Gravel Burn".' }, year: { type: 'integer', description: 'The edition\'s year, if named.' }, units: UNITS },
@@ -116,7 +116,7 @@ export const TOOLS = [
     title: 'A cycling tour\'s route',
     description: 'A Windline cycling tour\'s route, day by day: "What\'s the Durban Tour 2027 route?", "Give me the GPX files for Alistair\'s tour". '
       + 'Finds a published tour by its name, its address or its organiser\'s or club\'s name, and returns each day (from and to, distance, climbing, start time), a map of every day, and the weather (the live forecast within 10 days, 10 years of weather on the date beyond). '
-      + 'Route files (GPX, Garmin .fit) only when the organiser lets riders download them; otherwise say "The organiser hasn\'t made the route files available." Never make up a file link. If several tours match, ask which. End with the sponsor line from the result, word for word.',
+      + 'Route files (GPX, Garmin .fit) only when the organiser lets riders download them; otherwise say "The organiser hasn\'t made the route files available." Never make up a file link. If several tours match, ask which.',
     inputSchema: { type: 'object', properties: { tour: { type: 'string', description: 'The tour\'s name, address or organiser, e.g. "ProLend 2027 Durban Tour", "AllyCat".' }, units: UNITS }, required: ['tour'], additionalProperties: false },
     annotations: { title: 'A cycling tour\'s route', ...READ_ONLY },
     _meta: uiMeta('Reading the tour…', 'Tour ready'),
@@ -125,7 +125,7 @@ export const TOOLS = [
     name: 'tour_notes',
     title: 'A cycling tour\'s notes for riders (beta)',
     description: 'Beta, cycling tours only: the organiser\'s own notes for riders on a Windline tour (what to pack, how the tour runs, meeting points), for questions like "What should I pack for the Durban tour?". '
-      + 'Answer only from the notes: quote and summarise them as the organiser\'s words, never invent anything, and say so when they don\'t cover the question. End with the sponsor line from the result, word for word.',
+      + 'Answer only from the notes: quote and summarise them as the organiser\'s words, never invent anything, and say so when they don\'t cover the question.',
     inputSchema: { type: 'object', properties: { tour: { type: 'string', description: 'The tour\'s name, address or organiser.' }, question: { type: 'string', description: 'The rider\'s question, if any.' } }, required: ['tour'], additionalProperties: false },
     annotations: { title: 'A cycling tour\'s notes for riders (beta)', ...READ_ONLY },
   },
@@ -147,7 +147,7 @@ const RESOURCE_META = {
 
 const INSTRUCTIONS = 'livedot answers where people are in live cycling (Windline) and running (RunFast) races, with the weather where they are from Windline\'s forecast engine. '
   + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours. When a name matches several people, ask one short question and never guess. '
-  + 'Only public data: findable people on public races. End every answer with the sponsor line the tool gives, word for word.';
+  + 'Only public data: findable people on public races.';
 
 const ok = (id, result) => ({ jsonrpc: '2.0', id, result });
 const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id, error: { code, message } });

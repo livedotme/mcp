@@ -239,8 +239,11 @@ export async function tourRoute(ctx, args, sponsorLine) {
   if (t.list) { const x = `Several tours match "${q}": ${t.list.join('; ')}. Ask the user which one.`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', tours: t.list }, map: null }; }
   const ev = t.ev, f = f0(ev.tz), days = ev.days.filter((d) => d.points && d.points.length > 1 && d.start);
   const dayLine = (d) => `${d.label || 'Day'}: ${[d.from, d.to].filter(Boolean).join(' to ')}, ${f.dist(d.km)}${d.climb ? `, ${f.U.height(d.climb).toLocaleString('en-GB')} ${f.U.HEIGHT} of climbing` : ''}, start ${clock(Date.parse(d.start), ev.tz, f)}.`;
+  // route files: one GPX link a day (Windline's GET /api/event/tour/<slug>/day/<n>.gpx: the tour page's own file), only while the
+  // organiser's route-download switch is on; the server refuses them otherwise, and so does this answer
+  const gpxOf = (i) => `https://windline.tech/api/event/${ev.type || 'tour'}/${ev.slug}/day/${i + 1}.gpx`;
   const files = ev.routeFiles === true
-    ? `Route files: the organiser shares them. Download every day as GPX (or Garmin .fit), one file a day, with the Route button on the tour page: ${ev.url}`
+    ? 'Route files (GPX), one a day:\n' + days.map((d) => `- ${d.label || 'Day'}: ${gpxOf(ev.days.indexOf(d))}`).join('\n') + `\nGarmin .fit files: the Route button on the tour page, ${ev.url}`
     : 'The organiser hasn\'t made the route files available.';
   const P = { name: ev.name, sport: 'ride', tz: ev.tz, url: ev.url, app: 'windline', timedFor: `the organiser's plan (${f.speedShort((days[0] && days[0].pace) || ev.pace || 25)}${ev.stops ? ', ' + ev.stops + ' min of stops a day' : ''})`,
     days: days.map((d) => ({ name: d.label || [d.from, d.to].join(' to '), date: d.start.slice(0, 10), startMs: Date.parse(d.start), pts: triplesOf(d.points), km: d.km, kmh: d.pace || ev.pace || 25, stops: d.stops ?? ev.stops ?? 0 })),
@@ -248,9 +251,9 @@ export async function tourRoute(ctx, args, sponsorLine) {
   const out = await eventWeather(ctx, { event: ev.name, units: args.units, _plan: P }, sponsorLine);
   const head = `${ev.name}: ${days.length} day${days.length === 1 ? '' : 's'}, ${f.dist(days.reduce((s, d) => s + (d.km || 0), 0))}${t.page ? ', by ' + t.page.name : ''}.\n` + days.map(dayLine).join('\n') + '\n' + files + '\n\nThe weather:';
   out.text = head + ' ' + out.text.replace(/\nMore:.*$/m, `\nTour page: ${ev.url}`);
-  out.structured = { ...out.structured, view: 'tour_route', tour: ev.name, url: ev.url, route_files: ev.routeFiles === true, route_files_how: ev.routeFiles === true ? 'The Route button on the tour page (GPX or Garmin .fit, one file a day)' : null,
+  out.structured = { ...out.structured, view: 'tour_route', tour: ev.name, url: ev.url, route_files: ev.routeFiles === true, gpx: ev.routeFiles === true ? days.map((d) => ({ day: d.label, url: gpxOf(ev.days.indexOf(d)) })) : [],
     days: days.map((d, i) => ({ ...(out.structured.days && out.structured.days[i] || {}), label: d.label, from: d.from, to: d.to, km: d.km, climb_m: d.climb, start: d.start })) };
-  if (out.map) { out.map.follow = { url: ev.url, label: 'Open the tour' }; if (ev.routeFiles === true) out.map.fly = { url: ev.url, label: 'Get the route files' }; if (ev.routeFiles !== true) out.map.updated = 'The organiser hasn\'t made the route files available. · ' + out.map.updated; out.map.ahead = days.slice(0, 8).map((d, i) => ({ ...(out.map.ahead[i] || {}), k: (d.label || 'Day ' + (i + 1)) + ' · ' + [d.from, d.to].filter(Boolean).join(' → '), sub: f.dist(d.km).replace(/ \(.*\)/, '') + (d.climb ? ' · ' + f.U.height(d.climb).toLocaleString('en-GB') + ' ' + f.U.HEIGHT + ' up' : '') + (out.map.ahead[i] ? ' · ' + out.map.ahead[i].sub : '') })); }
+  if (out.map) { out.map.follow = { url: ev.url, label: 'Open the tour' }; if (ev.routeFiles === true && days.length) out.map.fly = { url: gpxOf(ev.days.indexOf(days[0])), label: days.length > 1 ? 'Day 1 GPX' : 'Download the GPX' }; if (ev.routeFiles !== true) out.map.updated = 'The organiser hasn\'t made the route files available. · ' + out.map.updated; out.map.ahead = days.slice(0, 8).map((d, i) => ({ ...(out.map.ahead[i] || {}), url: ev.routeFiles === true ? gpxOf(ev.days.indexOf(d)) : null, k: (d.label || 'Day ' + (i + 1)) + ' · ' + [d.from, d.to].filter(Boolean).join(' → '), sub: f.dist(d.km).replace(/ \(.*\)/, '') + (d.climb ? ' · ' + f.U.height(d.climb).toLocaleString('en-GB') + ' ' + f.U.HEIGHT + ' up' : '') + (out.map.ahead[i] ? ' · ' + out.map.ahead[i].sub : '') })); }
   return out;
 }
 

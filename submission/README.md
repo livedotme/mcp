@@ -16,4 +16,4 @@ One pack per directory, ready to paste. Wes clicks submit; nobody else creates a
 
 **Order:** 1. make the repo public, 2. MCP Registry (it feeds PulseMCP and others), 3. Smithery and Glama, 4. ChatGPT and Claude (reviews take longest), 5. mcp.so and PulseMCP.
 
-**Before ChatGPT and Claude, a decision for Wes (brand and money):** both reviews look at whether an app advertises, and Anthropic's directory rules look at tool descriptions that steer the model. Today every answer ends with "Live tracking, proudly brought to you free thanks to ProLend." and each tool description asks the model to keep it word for word. If a reviewer pushes back, the fallback is to keep the line in the answer text and the widget footer and drop the "word for word" instruction from the descriptions (one line in `src/server.js`).
+**The sponsor line (PM, 17 Oct):** every answer's text and the widget end with "Live tracking, proudly brought to you free thanks to ProLend." It's part of the tool result itself; no tool description asks the model to repeat it.
