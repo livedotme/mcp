@@ -315,7 +315,7 @@ export async function findPerson(ctx, args) {
     } else {
       const got = await Promise.all(['windline', 'runfast'].map((a) => R.find(a, q)));
       for (let i = 0; i < 2; i++) {
-        const a = ['windline', 'runfast'][i], L = listOf(got[i].body).filter((v) => !isDemo(v)); if (L.length >= 20) capped = true;
+        const a = ['windline', 'runfast'][i], L = listOf(got[i].body); if (L.length >= 20) capped = true; // the apps list their demo people only while config/demo.listed is on (App Review), then never
         if (a === 'runfast' && L.length) { const full = await R.liveByPid(a, L.map((v) => v.pid).slice(0, 20)); const F = listOf(full.body); L.forEach((v) => { const x = F.find((y) => y.pid === v.pid); people.push(norm(a, x || { ...v, status: v.live ? 'live' : null })); }); }
         else L.forEach((v) => people.push(norm(a, v)));
       }
@@ -338,16 +338,6 @@ export async function findPerson(ctx, args) {
   const nameExact = people.filter((p) => closeness(p, q) === 3);
   if (people.length === 1 || (nameExact.length === 1 && words(q).length >= 2)) { const p = people.length === 1 ? people[0] : nameExact[0]; return personAnswer(ctx, p, p.via || null); }
 
-  // nobody real and findable, but the race asked about has a demo (Comrades, Coast Classic) and its runner or rider has that
-  // name: the demo answers, labelled as the demo (Wes, 17 Oct: "where's Megan in the Comrades" must work for anyone trying it)
-  if (!people.length && !demo && letters >= 3) {
-    const ask = words(event || '').filter((x) => !STOP.has(x));
-    for (const d of ask.length ? DEMOS.filter((x) => ask.some((w) => x.words.some((y) => y !== 'demo' && y.startsWith(w)))) : []) {
-      const r = await R.liveByCode(d.app, 'demo'), v = listOf(r.body)[0]; if (!v) continue;
-      const p = { ...norm(d.app, v), via: { code: 'demo' } };
-      if (closeness(p, q)) return personAnswer(ctx, p, p.via, { note: `This is the ${d.name.replace(/\s*\(demo\)\s*$/i, '')} demo, live on livedot every day, so you can try following someone. The real race shows here when it's on, for everyone who chose to be findable.` });
-    }
-  }
   if (!people.length) {
     const why = letters < 3 && !demo ? 'Give me at least three letters of their name, or their livedot handle.' : `I couldn't find anyone called "${q}"${scope ? ' in ' + scope : event ? ` in "${event}" (it may not be live right now)` : ''} who is findable on a live race. Only people who chose to be findable show up in search; otherwise ask them for their livedot link (livedot.me/<handle>).`;
     const t = [why, ...narrowed.notes].join(' ');
@@ -357,7 +347,7 @@ export async function findPerson(ctx, args) {
   const total = people.length, label = `${total}${capped ? '+' : ''}`, top = people.slice(0, 5);
   const row = (p) => {
     const f = f0(p.event && p.event.tz), sh = sharesPosition(p);
-    return { id: idOf(p, p.via), name: shortName(p.name), sport: SPORT[p.app], race: p.event ? p.event.name : null, status: p.status,
+    return { id: idOf(p, p.via), name: shortName(p.name).replace(/\s*\(demo\)\s*$/i, ''), sport: SPORT[p.app], race: p.event ? p.event.name : null, status: p.status,
       km_now: sh ? +p.km.toFixed(1) : null, where: sh ? f.atShort(p.km) : p.status === 'finished' ? 'Finished' : p.status === 'waiting' ? 'Not started' : null,
       goal: p.goal && p.ghost && typeof p.ghost.diff === 'number' && sh ? (Math.abs(p.ghost.diff) < 30 ? 'on goal pace' : `${span(p.ghost.diff).replace(/ minutes?$/, ' min')} ${p.ghost.diff > 0 ? 'behind' : 'ahead of'} goal`) : null,
       pace: sh ? (p.app === 'runfast' ? (p.pace > 0 ? f.paceShort(3600 / p.pace) : null) : (p.speed > 0 ? f.speedShort(p.speed) : null)) : null,
