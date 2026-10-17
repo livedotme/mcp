@@ -40,7 +40,7 @@ try {
   const prm = await (await fetch(/resource_metadata="([^"]+)"/.exec(wa)[1].replace('https://livedot.me', LD))).json(); const asUrl = prm.authorization_servers[0];
   const as = await (await fetch(`${asUrl}/.well-known/oauth-authorization-server`)).json(); assert.equal(as.issuer, asUrl); step('the metadata: ' + as.authorization_endpoint);
   // 2. registration and PKCE
-  const reg = await (await fetch(as.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Claude', redirect_uris: [CB], token_endpoint_auth_method: 'none' }) })).json(); assert.ok(reg.client_id); step('registered: ' + reg.client_id);
+  const reg = await (await fetch(as.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'Trail Planner', redirect_uris: [CB], token_endpoint_auth_method: 'none' }) })).json(); assert.ok(reg.client_id); step('registered: ' + reg.client_id);
   const v = b64u(crypto.randomBytes(32)), c = b64u(crypto.createHash('sha256').update(v).digest()), state = 'st' + RUN;
   const authUrl = `${as.authorization_endpoint}?${new URLSearchParams({ response_type: 'code', client_id: reg.client_id, redirect_uri: CB, code_challenge: c, code_challenge_method: 'S256', state, scope: 'events.read events.write events.publish clubs.post', resource: prm.resource })}`;
 
@@ -49,7 +49,12 @@ try {
   const ctx = await browser.newContext({ viewport: { width: 480, height: 900 }, deviceScaleFactor: 3 });
   await ctx.addInitScript(() => { window.open = () => null; try { navigator.share = () => Promise.resolve(); } catch (e) {} try { Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.resolve() } }); } catch (e) {} });
   const page = await ctx.newPage();
-  await page.goto(authUrl); await page.waitForSelector('a.app'); await page.screenshot({ path: path.join(OUT, 'oauth-1-choose.png') }); step('the choose page (livedot.me/oauth/authorize)');
+  { const g = await (await fetch(as.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'ChatGPT', redirect_uris: ['https://chatgpt.com/connector_platform_oauth_redirect'] }) })).json();
+    const k = b64u(crypto.createHash('sha256').update('x'.repeat(50)).digest());
+    await page.goto(`${as.authorization_endpoint}?${new URLSearchParams({ response_type: 'code', client_id: g.client_id, redirect_uri: 'https://chatgpt.com/connector_platform_oauth_redirect', code_challenge: k, code_challenge_method: 'S256' })}`);
+    await page.waitForSelector('a.app'); assert.match(await page.content(), /verified: it returns to chatgpt\.com/); await page.screenshot({ path: path.join(OUT, 'oauth-0-choose-verified.png') }); step('ChatGPT from chatgpt.com: verified, and where the code goes'); }
+  { const bad = await fetch(as.registration_endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'ChatGPT', redirect_uris: ['https://evil.example/cb'] }) }); assert.equal(bad.status, 400); step('“ChatGPT” returning to evil.example: refused at registration'); }
+  await page.goto(authUrl); await page.waitForSelector('a.app'); assert.match(await page.content(), /Unverified app/); await page.screenshot({ path: path.join(OUT, 'oauth-1-choose.png') }); step('an unverified app: marked, and where the code goes (an app on this computer)');
   await page.click('a.app:has-text("Windline")'); await page.waitForSelector('#signin, #yes'); await page.waitForTimeout(600);
   await page.screenshot({ path: path.join(OUT, 'oauth-2-windline-signed-out.png') }); step('Windline’s page, signed out');
   await page.click('#signin'); await page.waitForSelector('input[name=email]'); await page.fill('input[name=email]', email); await page.click('button:has-text("Continue with email")');
