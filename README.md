@@ -89,7 +89,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 
 <img src="docs/shots/tour-route-widget.png" width="640" alt="A cycling tour's days on a map, each rated for the weather, with a Route files button">
 
-**More to try:** *“How’s the Coast Classic demo going?”* · *“Is Thandi racing?”* · *“Weather for the Gravel Burn?”* · *“What should I pack for the Durban tour?”* · *“What will the wind be like on this route on Saturday at 6?”* (attach a GPX) · signed in: *“Make my Saturday bunch ride a weekly club ride from this route.”*
+**More to try:** *“How’s the demo club doing in the Comrades?”* · *“How’s the Coast Classic demo going?”* · *“Is Thandi racing?”* · *“Weather for the Gravel Burn?”* · *“What should I pack for the Durban tour?”* · *“What will the wind be like on this route on Saturday at 6?”* (attach a GPX) · signed in: *“Make my Saturday bunch ride a weekly club ride from this route.”*
 
 ## Tools
 
@@ -98,13 +98,16 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `find_person` | Finds someone racing live by name, livedot handle (`@megan`, `livedot.me/megan`) or follow link. One clear match answers at once. Several become a picker ranked live first, then the handle's owner, name closeness and taps on the back; the assistant asks one short question and never guesses. Narrow with `event`, `surname`, `bib`, `club`, `place`, `wave`. |
 | `where_is` | Where someone is now: km and mile, time against their goal, pace, finish time, the temperature and wind there with the engine's rating, the next few km of wind and heat, and Follow live. |
 | `event_status` | How a live race is going: how long it's been under way, how many are on the map, how many finished, who's in front. |
+| `club_in_race` | How a club or team is doing in a live race (*“How is the UCT team doing in the Comrades?”*): each of its people on the club’s public live map, with km and goal time, the map with just the club’s dots, and a tap on a face for that person’s card. *“Give the team a tap on the back”* sends one to each member who takes taps. Try *“the demo club in the Comrades”* or *“Coast Riders in the Coast Classic”*. |
 | `event_weather` | Race-day weather along the course at the times people get there. Inside 10 days, the live forecast; beyond, 10 years of weather on the date, labelled as history. |
 | `fly_route` | A flyover of the course in the chat, coloured by the weather along it, with **Fly it in 3D**. |
 | `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. A GPX link for each day only when the organiser shares route files; otherwise it says so. |
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
 | `tap_on_the_back` | A tap on the back for someone racing live (only when you ask): it buzzes on their phone, through the same tap and rules as their follow page; in the day after their finish, a congratulation. Signed in, it carries your name; if not, the first name you give. |
-| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. The map flies over your route in the chat, coloured by the weather; for a 3D flight and a video, save it as a private ride or run. No account. |
+| `find_clubs` | Running and cycling clubs near a place ("best running club to join in Fourways"): approved clubs and organisers on RunFast and Windline, nearest first, with their weekly sessions, Beginners welcome, pace groups, the next session with its weather, and **Join** to the club's page. Never a person. |
+| `find_events` | Rides, runs, races and tours near a place and when ("trail runs near Cape Town in November"), soonest first, with the weather (forecast inside 10 days, typical beyond) and **I'm in** to the event's page. Only published public events of approved clubs and organisers. |
+| `plan_route` | The weather along your own route (a GPX file, a Ride with GPS link, or the points or encoded polyline another app's tool gave, e.g. a route or activity map from a fitness app) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. The map flies over your route in the chat, coloured by the weather; for a 3D flight and a video, save it as a private ride or run. No account. |
 
 ### For organisers and club admins (sign in)
 

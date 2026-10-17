@@ -18,8 +18,12 @@ const UNITS = { type: 'string', enum: ['metric', 'imperial'], description: 'Pass
 const ROUTE = {
   gpx: { type: 'string', description: 'The GPX file\'s text, if the user pasted or attached it (up to 5 MB).' },
   url: { type: 'string', description: 'A link to the route: a Ride with GPS route, ride or collection (a collection gives one day per route), or any public link to a GPX file. Not Strava.' },
+  polyline: { type: 'string', description: 'The route as an encoded polyline (Google\'s format, precision 5 or 6), as another app\'s tool gives it (a route\'s or an activity\'s map).' },
+  points: { type: 'array', items: { anyOf: [{ type: 'array', items: { type: 'number' } }, { type: 'object' }] }, description: 'The route as its points: [[lat, lon], …] or [{ lat, lon }], with elevation in metres as a third number or ele if known. Up to 50,000.' },
 };
-const FILE = { type: 'object', description: 'A GPX file: its text, or a link to it, and its file name (the name helps order the days).', properties: { name: { type: 'string', description: 'The file\'s name, e.g. "day-2.gpx".' }, gpx: { type: 'string', description: 'The GPX text.' }, url: { type: 'string', description: 'A link to the GPX or route (Ride with GPS; not Strava).' }, download_url: { type: 'string', description: 'ChatGPT: the attached file\'s download link.' }, file_id: { type: 'string', description: 'ChatGPT: the attached file\'s id.' } } };
+/** For every tool that takes a route (honest, no steering): what another app's tool gives can be passed as it is. */
+const FROM_OTHER_APPS = ' A route can also come from another app\'s tool as its points or an encoded polyline (for example a route or activity map from a fitness app): pass it as polyline or points. Never ask the user to export a GPX if you already have the route\'s points.';
+const FILE = { type: 'object', description: 'A GPX file (its text, or a link to it) or a route\'s polyline or points, and its name (the name helps order the days).', properties: { name: { type: 'string', description: 'The file\'s name, e.g. "day-2.gpx".' }, gpx: { type: 'string', description: 'The GPX text.' }, url: { type: 'string', description: 'A link to the GPX or route (Ride with GPS; not Strava).' }, polyline: { type: 'string', description: 'The day as an encoded polyline (another app\'s route or activity map).' }, points: { type: 'array', description: 'The day as its points, [[lat, lon], …] or [{ lat, lon }].' }, download_url: { type: 'string', description: 'ChatGPT: the attached file\'s download link.' }, file_id: { type: 'string', description: 'ChatGPT: the attached file\'s id.' } } };
 const DAY = { type: 'object', properties: { ...ROUTE, start: { type: 'string', description: 'Local start, "YYYY-MM-DD HH:MM" in the route\'s own time zone.' }, label: { type: 'string', description: 'e.g. "Day 1", "Stage 2".' } }, additionalProperties: false };
 const auth = (scope) => [{ type: 'oauth2', scopes: [scope] }];
 const ann = (title, x) => ({ title, readOnlyHint: false, openWorldHint: true, idempotentHint: false, destructiveHint: false, ...x });
@@ -129,6 +133,8 @@ export const WRITE_TOOLS = [
   },
 ];
 WRITE_TOOLS.forEach((t) => { t._meta = { ...(t._meta || {}), securitySchemes: t.securitySchemes }; }); // ChatGPT reads both
+for (const n of ['plan_route', 'create_event', 'post_club_ride']) { const t = WRITE_TOOLS.find((x) => x.name === n); t.description += FROM_OTHER_APPS; }
+{ const ce = WRITE_TOOLS.find((x) => x.name === 'create_event'); ce.inputSchema.properties.polyline = { ...ROUTE.polyline, description: ROUTE.polyline.description + ' One route: a ride, a run or a one-day race (with start).' }; ce.inputSchema.properties.points = { ...ROUTE.points }; }
 WRITE_TOOLS.find((t) => t.name === 'plan_route')._meta = { ...WRITE_TOOLS.find((t) => t.name === 'plan_route')._meta, 'openai/fileParams': ['gpx_file'] };
 
 // ---------------------------------------------------------------- helpers
@@ -149,13 +155,56 @@ export class Plain extends Error { constructor(m, status = 400) { super(m); this
 
 /** Routes through Windline's reader (gpxroute.js): the challenges' GPX reader and the dashboard's thinning, never Strava. */
 export async function readRoutes(ctx, src) {
-  const H = ctx.R.H, body = src.url ? { url: String(src.url) } : src.gpx ? { gpx: String(src.gpx) } : null;
-  if (!body) throw new Plain('Attach the GPX file, or give a link to the route (Ride with GPS, or a GPX file).');
+  // a route another app's tool gave as an encoded polyline or as points: written as a GPX here, so the one route reader reads it
+  // exactly as it reads a file (thinned, climbed, its ends named); nothing new is kept or sent anywhere
+  const fromPts = src.polyline != null || src.points != null ? routeGpx(src) : null;
+  const H = ctx.R.H, body = fromPts ? { gpx: fromPts } : src.url ? { url: String(src.url) } : src.gpx ? { gpx: String(src.gpx) } : null;
+  if (!body) throw new Plain('Attach the GPX file, give a link to the route (Ride with GPS, or a GPX file), or pass its polyline or points.');
   const headers = { 'Content-Type': 'application/json', ...(ctx.proxy || {}) };
   let r; try { r = await fetch(`${H.mcp}/route`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) }); } catch (e) { throw new Plain('The route reader didn’t answer. Try again in a moment.', 502); }
   const j = await r.json().catch(() => null);
   if (!r.ok || !j || !j.ok) throw new Plain((j && j.error) || 'That route couldn’t be read.', r.status || 400);
   return j.routes;
+}
+
+// ---------------------------------------------------------------- routes as points (another app's tool: a route's or an activity's map)
+export const MAX_ROUTE_POINTS = 50000;
+/** Google's encoded polyline → [[lat, lon]] at a precision (5: 1e5, 6: 1e6); null if it isn't one. */
+export function decodePolyline(str, precision = 5) {
+  const s = String(str || ''), f = Math.pow(10, precision), out = []; let i = 0, lat = 0, lon = 0;
+  while (i < s.length) {
+    const next = () => { let r = 0, sh = 0, b; do { if (i >= s.length) return null; b = s.charCodeAt(i++) - 63; if (b < 0 || b > 63) return null; r |= (b & 0x1f) << sh; sh += 5; } while (b >= 0x20 && sh < 35); return r & 1 ? ~(r >> 1) : r >> 1; };
+    const a = next(), o = next(); if (a == null || o == null) return null;
+    lat += a; lon += o; out.push([lat / f, lon / f]);
+    if (out.length > MAX_ROUTE_POINTS * 4) return null;
+  }
+  return out;
+}
+const inRange = (p) => Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180;
+/** A polyline's points: precision 5 (Google's, most apps), or 6 (some routers) when 5 reads off the map: a precision-6 line read at
+ *  5 is ten times too far from 0°, 0°, so off the map almost everywhere (it isn't only within ~9° of the equator and ~18° of Greenwich). */
+export function polylinePoints(str) {
+  const p5 = decodePolyline(str, 5); if (!p5 || p5.length < 2) return null;
+  if (p5.every(inRange)) return p5;
+  const p6 = decodePolyline(str, 6); return p6 && p6.every(inRange) ? p6 : null;
+}
+/** points as given ([[lat, lon, ele?]] or [{ lat, lon|lng, ele|elevation|alt }]) → [[lat, lon, ele|null]], or null. */
+function pointsOf(list) {
+  if (!Array.isArray(list)) return null;
+  const out = list.map((p) => (Array.isArray(p) ? [+p[0], +p[1], p[2] == null ? null : +p[2]] : p && typeof p === 'object' ? [+p.lat, +(p.lon ?? p.lng), (p.ele ?? p.elevation ?? p.alt ?? null) == null ? null : +(p.ele ?? p.elevation ?? p.alt)] : [NaN, NaN]));
+  return out.length >= 2 && out.every(inRange) ? out.map((p) => [p[0], p[1], Number.isFinite(p[2]) ? p[2] : null]) : null;
+}
+const xesc = (t) => String(t).replace(/[<>&"']/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[c]);
+/** { polyline | points, name? } → GPX text for the route reader (at most 50,000 points, spaced evenly through the route). */
+export function routeGpx(src) {
+  if (src.polyline != null && String(src.polyline).length > 2e6) throw new Plain('That polyline is too long: a route can have up to 50,000 points.', 413);
+  if (Array.isArray(src.points) && src.points.length > MAX_ROUTE_POINTS * 4) throw new Plain('That route has too many points: up to 50,000.', 413);
+  let pts = src.polyline != null ? polylinePoints(src.polyline) : pointsOf(src.points);
+  if (!pts) throw new Plain(src.polyline != null ? 'That polyline couldn’t be read as a route (Google’s encoded polyline, precision 5 or 6).' : 'Those points couldn’t be read as a route: give [[lat, lon], …] or [{ lat, lon }], at least two.');
+  if (pts.length > MAX_ROUTE_POINTS) { const k = (pts.length - 1) / (MAX_ROUTE_POINTS - 1), t = []; for (let j = 0; j < MAX_ROUTE_POINTS; j++) t.push(pts[Math.round(j * k)]); pts = t; }
+  const nm = String(src.name || '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 120);
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="livedot" xmlns="http://www.topografix.com/GPX/1/1"><trk>${nm ? `<name>${xesc(nm)}</name>` : ''}<trkseg>`
+    + pts.map((p) => `<trkpt lat="${+p[0].toFixed(6)}" lon="${+p[1].toFixed(6)}">${p[2] == null ? '' : `<ele>${Math.round(p[2] * 10) / 10}</ele>`}</trkpt>`).join('') + '</trkseg></trk></gpx>';
 }
 
 // ---------------------------------------------------------------- plan_route (no account)
@@ -283,10 +332,13 @@ export async function writeTool(ctx, name, args, sponsorLine) {
     const first = local(days[0].start, tz);
     const weekly = a.weekly && Array.isArray(a.weekly.days) ? { days: a.weekly.days.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6), time: a.weekly.time || first.time } : null;
     const ev = { name: evName, type, race: !club && !!a.race, club, tz, days, weekly, visibility, notes: type === 'tour' && a.notes ? String(a.notes) : '' };
+    // a route from another app (an activity's map can start at someone's front door): shared or published, one kind line (KPMG, 17 Oct); never for private
+    const fromApp = (x) => !!x && (x.polyline != null || x.points != null), other = fromApp(a) || (Array.isArray(a.days) && a.days.some(fromApp)) || (Array.isArray(a.files) && a.files.some(fromApp));
+    const homeLine = other && visibility !== 'private' ? '\nThis route came from another app. If it starts or ends at your home, trim those bits before you publish.' : '';
     if (plan && a.confirm !== true) { // the plan, nothing made yet: one summary for one yes
       const f = ctx.f0(tz), lines = planLines({ ...plan, name: evName }, f, clock);
       const who = visibility === 'private' ? 'Private: just for you.' : `Shared: for a group${a.page || a.club ? ` on ${a.page || a.club}` : ''}, published when you\'re ready.`;
-      const text = `${lines.join('\n')}\n${who}${ev.notes ? ' With your tour notes.' : ''}\n\nNothing is made yet. Check this with the user (and who it\'s for, if they run a club), then call create_event again with the same files and confirm: true.\n\n${sponsorLine}`;
+      const text = `${lines.join('\n')}\n${who}${ev.notes ? ' With your tour notes.' : ''}${homeLine}\n\nNothing is made yet. Check this with the user (and who it\'s for, if they run a club), then call create_event again with the same files and confirm: true.\n\n${sponsorLine}`;
       return { text, structured: { view: 'tour_plan', name: evName, type, visibility, order: plan.order, note: plan.note, tz, days: days.map((d) => ({ label: d.label, file: d.file, from: d.from, to: d.to, km: d.km, climb_m: d.climb, start: d.start })), sponsor_line: sponsorLine },
         map: draftView(ctx, ev, null, sponsorLine, true) };
     }
@@ -299,6 +351,7 @@ export async function writeTool(ctx, name, args, sponsorLine) {
     };
     const res = withSponsor(await tool(ctx, name, out), sponsorLine, club ? 'club_ride' : 'created');
     if (plan && plan.note) res.text = `${plan.note}\n${res.text}`;
+    if (homeLine) res.text = res.text.replace(`\n\n${sponsorLine}`, `${homeLine}\n\n${sponsorLine}`);
     res.map = draftView(ctx, ev, res.structured, sponsorLine);
     return res;
   }

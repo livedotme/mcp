@@ -4,6 +4,7 @@
 //   node test/smoke.mjs --show     prints each tool's text answer
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { handle, TOOLS, serverCard, missOf } from '../src/server.js';
@@ -19,7 +20,11 @@ let n = 0;
 // the towns at a route's ends (Photon, as the dashboard): stubbed here by latitude, so the tests never depend on it
 const TOWNS = [[-34.18, 'Mossel Bay'], [-34.08, 'George'], [-33.98, 'Wilderness'], [-33.88, 'Knysna'], [-33.78, 'Plettenberg Bay'], [-33.68, 'Storms River']];
 const realFetch = globalThis.fetch, PHOTON = [];
-globalThis.fetch = (u, o) => { const s = String(u && u.url || u); if (!s.startsWith('https://photon.komoot.io/')) return realFetch(u, o); const q = new URL(s), lat = +q.searchParams.get('lat'); PHOTON.push(s);
+// find_clubs / find_events: a place's name to a point (Photon's search), stubbed the same way
+const PLACES = { fourways: [-26.0106, 28.0104, 'Fourways', 'suburb'], johannesburg: [-26.2041, 28.0473, 'Johannesburg', 'city'], 'cape town': [-33.9249, 18.4241, 'Cape Town', 'city'] };
+globalThis.fetch = (u, o) => { const s = String(u && u.url || u); if (!s.startsWith('https://photon.komoot.io/')) return realFetch(u, o); const q = new URL(s), lat = +q.searchParams.get('lat');
+  if (q.pathname === '/api/') { const P = PLACES[String(q.searchParams.get('q')).toLowerCase()]; return Promise.resolve(new Response(JSON.stringify({ features: P ? [{ geometry: { coordinates: [P[1], P[0]] }, properties: { name: P[2], city: 'Johannesburg', country: 'South Africa', countrycode: 'ZA', osm_key: 'place', osm_value: P[3] } }] : [] }), { headers: { 'Content-Type': 'application/json' } })); }
+  PHOTON.push(s); // the town lookups only (a route's ends)
   const t = TOWNS.reduce((b, x) => (Math.abs(x[0] - lat) < Math.abs(b[0] - lat) ? x : b)); return Promise.resolve(new Response(JSON.stringify({ features: [{ properties: { name: t[1], osm_value: 'town' } }] }), { headers: { 'Content-Type': 'application/json' } })); };
 const postRaw = (body, h = {}) => handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env);
 const post = async (body, h = {}) => { const r = await handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env); return { status: r.status, body: r.status === 202 ? null : await r.json() }; };
@@ -43,7 +48,7 @@ try {
     assert.equal(i.body.result.protocolVersion, '2025-06-18'); assert.equal(i.body.result.serverInfo.title, 'livedot MCP');
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
-    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
+    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
     t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route', 'tap_on_the_back', 'invite_members'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, WURI); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
@@ -133,9 +138,42 @@ try {
   await test('event_weather: an event livedot hasn\'t got', async () => {
     const r = await call('event_weather', { event: 'Tour de Nowhere' }); assert.match(r.content[0].text, /don't have/);
   });
+  await test('find_clubs: "best running club to join in Fourways": nearest first, sessions, beginners, Join to the page, never a person', async () => {
+    const r = await call('find_clubs', { place: 'Fourways' }), s = r.structuredContent, t = r.content[0].text;
+    assert.equal(s.view, 'clubs'); assert.equal(s.place, 'Fourways, Johannesburg, South Africa'); assert.equal(s.km, 25);
+    assert.deepEqual(s.clubs.map((c) => c.name), ['Fourways Striders', 'Fourways Wheelers', 'Jozi Trail Runners', 'Jozi Tours']); // both apps, nearest first (ties by name)
+    const fw = s.clubs.find((c) => c.name === 'Fourways Wheelers');
+    assert.equal(fw.join, 'https://windline.tech/c/fourways-wheelers#join'); assert.equal(fw.sessions, 'Tue 17:30 from Fourways Mall · Sat 06:00 from Fourways'); assert.equal(fw.beginners_welcome, true); assert.equal(fw.pace_groups, '25–30 km/h');
+    assert.match(t, /^Clubs near Fourways/); assert.match(t, /Join: https:\/\/runfast\.tech\/c\/fourways-striders#join/); assert.match(t, /Beginners welcome; pace groups 5:30–7:00 \/km\./); assert.match(t, /create your account/);
+    assert.ok(!/admins|managers|uid/i.test(JSON.stringify(r)), 'something about people');
+    const v = r._meta['livedot/view']; assert.equal(v.kind, 'list'); assert.equal(v.items.length, 4); assert.equal(v.items[0].button.label, 'Join'); assert.equal(v.items[0].button.url, 'https://runfast.tech/c/fourways-striders#join'); assert.ok(v.cta && v.sponsor);
+    assert.match(t, /Run a club that isn't listed\? Add it free: cycling https:\/\/windline\.tech\/pages\/\?from=livedot-mcp#apply · running https:\/\/runfast\.tech\/app\/\?ref=livedot-mcp#\/clubs\/add/); assert.equal(v.add.label, 'Is your club missing? Add it free'); assert.ok(s.add_club.cycling && s.add_club.running);
+  });
+  await test('find_clubs: running, beginners: one app, the RunFast account line', async () => {
+    const r = await call('find_clubs', { place: 'fourways', sport: 'running', beginners: true }), s = r.structuredContent;
+    assert.deepEqual(s.clubs.map((c) => c.name), ['Fourways Striders']); assert.equal(s.app, 'runfast'); assert.equal(s.signup.url, 'https://runfast.tech/app/?ref=mcp#/signup');
+    assert.match(r.content[0].text, /^Beginner-friendly road running clubs|^Beginner-friendly running clubs/); assert.equal(r._meta['livedot/view'].sport, 'run');
+  });
+  await test('find_events: "cycle tours around Johannesburg": the tour, its organiser, I\'m in', async () => {
+    const r = await call('find_events', { place: 'Johannesburg', sport: 'tours' }), s = r.structuredContent;
+    assert.equal(s.view, 'events'); assert.deepEqual(s.events.map((e) => e.name), ['Cradle 3-Day']); assert.equal(s.events[0].club, 'Jozi Tours'); assert.equal(s.events[0].join, 'https://windline.tech/o/jozi-tours#join');
+    assert.match(r.content[0].text, /^Tours near Johannesburg/); assert.equal(r._meta['livedot/view'].items[0].button.label, 'I\'m in');
+  });
+  await test('find_events: soonest first, a window from words, a kind', async () => {
+    let r = await call('find_events', { place: 'Fourways' }); assert.deepEqual(r.structuredContent.events.map((e) => e.name), ['Saturday Bunch', 'Saturday Long Run', 'Cradle 3-Day']);
+    r = await call('find_events', { place: 'Fourways', kind: 'club run' }); assert.deepEqual(r.structuredContent.events.map((e) => e.name), ['Saturday Long Run']);
+    r = await call('find_events', { place: 'Fourways', when: 'this week' }); assert.ok(!r.structuredContent.events || !r.structuredContent.events.some((e) => e.name === 'Cradle 3-Day'));
+  });
+  await test('find_clubs, find_events: none near, a place not on the map: said plainly, and both are misses', async () => {
+    let r = await call('find_events', { place: 'Cape Town', sport: 'trail-run', when: 'November' }); assert.equal(r.structuredContent.view, 'none'); assert.match(r.content[0].text, /don't know any public trail running events within 50 km|don't know any public trail running events within 100 km/);
+    assert.equal(missOf('find_events', { place: 'Cape Town' }, { structured: r.structuredContent }, [{ app: 'runfast', status: 200 }]).outcome, 'none');
+    r = await call('find_clubs', { place: 'Cape Town', sport: 'running' }); assert.equal(r.structuredContent.view, 'none'); assert.match(r.content[0].text, /Add it free: running https:\/\/runfast\.tech\/app\/\?ref=livedot-mcp#\/clubs\/add\n/); // none near: how to be added
+    r = await call('find_clubs', { place: 'Nowhereville' }); assert.equal(r.structuredContent.view, 'none'); assert.match(r.content[0].text, /couldn't find "Nowhereville"/);
+    assert.equal(missOf('find_clubs', { place: 'Nowhereville' }, { structured: r.structuredContent }, [], 'no_place').q, 'Nowhereville');
+  });
   await test('sign-in: write tools need an account; read tools and plan_route don’t', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body.result.tools;
-    assert.equal(t.length, 16); const by = Object.fromEntries(t.map((x) => [x.name, x]));
+    assert.equal(t.length, 19); const by = Object.fromEntries(t.map((x) => [x.name, x]));
     ['find_person', 'where_is', 'plan_route'].forEach((n) => assert.equal(by[n].securitySchemes[0].type, 'noauth'));
     assert.deepEqual(by.create_event.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.equal(by.publish_event.annotations.destructiveHint, true); assert.equal(by.list_my_events.annotations.readOnlyHint, true);
     assert.match(by.publish_event.description, /ALWAYS ask the user to confirm/);
@@ -372,6 +410,113 @@ try {
     assert.ok(c.resource_domains.includes('https://weatherkit.apple.com')); assert.match(h, /weatherkit\.apple\.com\/legal-attribution\.html/);
     const m = await call('where_is', { handle: 'megan' }), v = m._meta['livedot/view']; assert.equal(v.appleLegal, 'https://weatherkit.apple.com/legal-attribution.html'); assert.equal(v.sponsorName, 'ProLend'); assert.match(v.sponsorUrl, /^https:\/\//);
     assert.match(m.content[0].text, /\nWeather: \[Apple Weather\]\(https:\/\/weatherkit\.apple\.com\/legal-attribution\.html\)/); assert.match(m.content[0].text, /free thanks to \[ProLend\]\(https:\/\/[^)]+\)\.$/);
+  });
+  await test('tour taps: "Where is Alistair’s tour?" shows the tour card with a tap button on its days; the tap goes to the organiser, named as the tour page names them ("Alistair’s Cycle Tours will read it out tonight"); never outside its days', async () => {
+    const t = await call('tour_route', { tour: 'Karoo Campfire Tour' }), v = t._meta['livedot/view'];
+    assert.equal(t.structuredContent.can_tap, true); assert.deepEqual(v.tap, { tour: 'karoo-campfire-tour', first: null, finished: false, label: 'Give the tour a tap on the back' }); assert.match(t.content[0].text, /give the tour a tap on the back: the organiser reads them out at night/);
+    const old = await call('tour_route', { tour: 'Alistair’s Durban Tour 2027' }); assert.equal(old.structuredContent.can_tap, false); assert.equal(old._meta['livedot/view'].tap, null);
+    const r = await call('tap_on_the_back', { tour: 'karoo-campfire-tour', name: 'Sam' }), sent = await lastSeen();
+    assert.match(r.content[0].text, /^Tap sent\. Alistair’s Cycle Tours will read it out tonight\.\n/); assert.equal(r.structuredContent.tour, 'Karoo Campfire Tour'); assert.equal(sent.args.tour, 'karoo-campfire-tour'); assert.equal(sent.args.app, 'windline'); assert.equal(sent.args.name, 'Sam');
+    const no = await call('tap_on_the_back', { tour: 'Alistair’s Durban Tour 2027' }); assert.match(no.content[0].text, /isn’t open for taps on the back/); assert.ok(!/Tap sent/.test(no.content[0].text));
+    assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /pass tour: the tap goes to its organiser/); assert.match(TOOLS.find((x) => x.name === 'tour_route').description, /Where is Alistair\\'s Durban tour\?|Where is Alistair's Durban tour\?/);
+  });
+  // Wes's demo prompts, as production answers them most of the day: no race live but the demos (the apps list them: config/demo.listed)
+  const quiet = { ...env, WINDLINE_API: `http://localhost:${PORT}/quiet/windline`, RUNFAST_API: `http://localhost:${PORT}/quiet/runfast` };
+  const callQ = async (name, args) => { const r = await handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' }, body: JSON.stringify({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args } }) }), quiet);
+    const t = await r.text(), j = JSON.parse(t.startsWith('event:') || t.startsWith('data:') ? t.split('\n').find((l) => l.startsWith('data:')).slice(5) : t); assert.ok(j.result, JSON.stringify(j)); conforms(name, j.result); if (SHOW) console.log('\n' + name + ' ' + JSON.stringify(args) + '\n' + j.result.content[0].text); return j.result; };
+  await test('Wes’s demo prompts: “How’s the Comrades going?”, “How is the Coast Classic going?”: the demo race, a live race like any other while it’s listed (no “demo” needed)', async () => {
+    for (const [ev, nm] of [['Comrades', /Comrades .*\(demo\)/], ['the Comrades', /Comrades .*\(demo\)/], ['Coast Classic', /Coast Classic \(demo\)/]]) {
+      const r = await callQ('event_status', { event: ev }); assert.equal(r.structuredContent.view, 'event', ev + ': ' + r.content[0].text.slice(0, 160)); assert.match(r.structuredContent.name, nm); assert.ok(!/No live race on livedot matches/.test(r.content[0].text));
+    }
+  });
+  await test('Wes’s demo prompts: “Fly the Comrades”, “What’s the weather for the Comrades?”: the demo course, no “demo” needed', async () => {
+    const f = await callQ('fly_route', { event_or_route: 'Comrades' }); assert.equal(f.structuredContent.view, 'fly_route', f.content[0].text.slice(0, 200)); assert.match(f.content[0].text, /Comrades .*\(demo\)/);
+    const w = await callQ('event_weather', { event: 'Comrades' }); assert.equal(w.structuredContent.view, 'event_weather', w.content[0].text.slice(0, 200)); assert.match(w.content[0].text, /Comrades .*\(demo\)/);
+    const p = await callQ('find_person', { name_or_handle: 'Megan', event: 'Comrades' }); assert.ok(['picker', 'person'].includes(p.structuredContent.view), p.content[0].text.slice(0, 200));
+  });
+  await test('tour_route: “Where’s Alistair Cronk’s Durban tour?”, “Durban tour”, “Durban”: one search over the tour’s name and who its page says puts it on (Windline’s /api/event/find)', async () => {
+    for (const q of ['Durban tour', 'Durban', 'Alistair Cronk Durban tour', 'Alistair Cronk’s Durban tour']) { const r = await call('tour_route', { tour: q }); assert.equal(r.structuredContent.view, 'tour_route', q + ': ' + r.content[0].text.slice(0, 160)); assert.equal(r.structuredContent.tour, 'Alistair’s Durban Tour 2027'); }
+    const k = await call('tour_route', { tour: 'Karoo' }); assert.equal(k.structuredContent.tour, 'Karoo Campfire Tour');
+  });
+  await test('the demo of a tour’s taps: the showcase tour (two days out) offers the tap while the demo is listed; felt, nothing kept', async () => {
+    const t = await call('tour_route', { tour: 'Pacific Coast Tour' }); assert.equal(t.structuredContent.can_tap, true); assert.equal(t._meta['livedot/view'].tap.tour, 'pacific-coast-tour');
+    const r = await call('tap_on_the_back', { tour: 'Pacific Coast Tour', name: 'Sam' }); assert.match(r.content[0].text, /^Tap sent\. The organiser will read it out tonight\. \(This is the demo of a tour's taps: nothing is kept\.\)/); assert.equal(r.structuredContent.demo, true);
+  });
+  await test('nothing to show: every view-none answer still draws a card (the answer’s words, no map, never “Loading…”)', async () => {
+    for (const [tool, args, re] of [['tour_route', { tour: 'thomson smillie tour' }, /couldn't find a published Windline tour called "thomson smillie tour"/], ['find_person', { name_or_handle: 'Zzyzx Qwerty' }, /couldn't find anyone called "Zzyzx Qwerty"/], ['event_status', { event: 'Nowhere Classic' }, /No live race on livedot matches "Nowhere Classic"/], ['where_is', { person: 'nonsense' }, /isn't one find_person gave/]]) {
+      const r = await call(tool, args), v = r._meta && r._meta['livedot/view']; assert.equal(r.structuredContent.view, 'none'); assert.ok(v, tool + ': no view'); assert.equal(v.kind, 'none'); assert.match(v.message, re); assert.ok(!/Live tracking, proudly/.test(v.message)); assert.match(v.sponsor, /^Live tracking, proudly brought to you free thanks to/);
+    }
+  });
+  await test('tour_route { day }: “fly over day 2 of a tour”: that day from the air, coloured by the weather, with Windline’s Fly it in 3D for the day; a day it hasn’t got: ask which', async () => {
+    const r = await call('tour_route', { tour: 'Alistair’s Durban Tour 2027', day: 2 }), v = r._meta['livedot/view'], S = r.structuredContent;
+    assert.equal(S.view, 'tour_route'); assert.equal(S.day, 2); assert.equal(v.kind, 'fly'); assert.ok(v.course.length > 10 && v.legs && v.legs.length);
+    assert.equal(S.fly_url, 'https://app.windline.tech/fly?e=tour/alistairs-durban-tour-2027&d=2&back=' + encodeURIComponent('https://tour.windline.tech/alistairs-durban-tour-2027/day-2')); assert.deepEqual(v.fly, { url: S.fly_url, label: 'Fly it in 3D' });
+    assert.equal(S.day_url, 'https://tour.windline.tech/alistairs-durban-tour-2027/day-2'); assert.match(r.content[0].text, /^Here's day 2 of Alistair’s Durban Tour 2027 from the air: Hillcrest to Durban/); assert.match(r.content[0].text, /\nFly it in 3D: https:\/\/app\.windline\.tech\/fly\?e=tour\//);
+    const no = await call('tour_route', { tour: 'Alistair’s Durban Tour 2027', day: 9 }); assert.equal(no.structuredContent.view, 'none'); assert.match(no.content[0].text, /has 2 days\. Ask the user which day \(1 to 2\)/);
+    assert.match(TOOLS.find((x) => x.name === 'tour_route').description, /fly over day 3 of a tour/i);
+  });
+  await test('club_in_race: “How is the UCT team doing in the Comrades?”: the club’s people on its live map in that race, each a person id for where_is; logos from the apps’ hosts only; no one who stopped', async () => {
+    const r = await call('club_in_race', { club: 'Durban Striders', event: 'Comrades' }), v = r._meta['livedot/view'], S = r.structuredContent;
+    assert.equal(S.view, 'club'); assert.equal(v.kind, 'club'); assert.equal(S.club.name, 'Durban Striders'); assert.equal(v.club.logo, 'https://runfast.tech/img/clubs/striders.png');
+    assert.ok(S.count >= 5 && S.count <= 8); assert.equal(S.members.length, S.count); assert.ok(S.members.every((m) => /^runfast:p:pfix/.test(m.id) && m.status !== 'stopped'));
+    assert.match(r.content[0].text, /^Durban Striders: \d+ runners in the Comrades \(preview\)/); assert.match(v.subtitle, /^\d+ of our runners in the Comrades \(preview\)$/);
+    assert.ok(v.dots.length <= S.count && v.dots.every((d) => isFinite(d.lat) && isFinite(d.lon))); assert.equal(v.dots.length, S.members.filter((m) => m.km != null).length); // a dot only where the public map gives a position
+    assert.deepEqual(v.refresh, { tool: 'club_in_race', args: { club: 'runfast:durban-striders', event: 'Comrades', units: 'metric' } }); assert.equal(v.follow.url, 'https://runfast.tech/live/club/durban-striders');
+    const again = await call(v.refresh.tool, v.refresh.args); assert.equal(again._meta['livedot/view'].kind, 'club'); assert.equal(again.structuredContent.count, S.count); // the card's 30 s refresh
+    const p = await call('where_is', { person: S.members[0].id }); assert.equal(p.structuredContent.view, 'person'); assert.equal(p.structuredContent.name, S.members[0].name); // tapping a face opens their card
+    const u = await call('club_in_race', { club: 'the UCT team', event: 'Comrades' }); assert.equal(u.structuredContent.club.name, 'UCT Running Club'); assert.equal(u._meta['livedot/view'].club.logo, null); assert.equal(u._meta['livedot/view'].club.initials, 'URC');
+    const a = await call('club_in_race', { club: 'runfast.tech/c/durban-striders' }); assert.equal(a.structuredContent.club.name, 'Durban Striders');
+    const w = await call('club_in_race', { club: 'Bay Wheelers', event: 'Coast Classic' }); assert.equal(w.structuredContent.club.app, 'windline'); assert.match(w.content[0].text, /riders in the Coast Classic \(preview\)/);
+    const none = await call('club_in_race', { club: 'Nowhere Harriers' }); assert.equal(none.structuredContent.view, 'none'); assert.match(none.content[0].text, /couldn't find a club called "Nowhere Harriers"/);
+    const off = await call('club_in_race', { club: 'Bay Wheelers', event: 'Comrades' }); assert.match(off.content[0].text, /No one from Bay Wheelers is on the club's live map in Comrades right now/);
+  });
+  await test('club_in_race through find_person and event_status (“UCT team”, a club named in a race); the team tap: one tap to each member who takes them, and how many went', async () => {
+    const f = await call('find_person', { name_or_handle: 'UCT team', event: 'Comrades' }); assert.equal(f.structuredContent.view, 'club'); assert.equal(f.structuredContent.club.name, 'UCT Running Club');
+    const e = await call('event_status', { event: 'Comrades', club: 'Durban Striders' }); assert.equal(e.structuredContent.view, 'club');
+    const S = (await call('club_in_race', { club: 'Durban Striders', event: 'Comrades' })).structuredContent, n0 = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).length;
+    const t = await call('tap_on_the_back', { club: 'Durban Striders', event: 'Comrades', name: 'Sam' }), seen = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).slice(n0).filter((x) => x.tool === 'tap');
+    const want = S.members.filter((m) => m.can_tap).length; assert.equal(seen.length, want); assert.ok(seen.every((x) => /^pfix/.test(x.args.pid) && x.args.app === 'runfast' && x.args.name === 'Sam'));
+    assert.match(t.content[0].text, new RegExp('^Taps sent to ' + want + ' runners from Durban Striders\\.')); assert.equal(t.structuredContent.taps_sent, want); assert.equal(t._meta['livedot/view'].kind, 'club');
+    assert.equal(TOOLS.find((x) => x.name === 'club_in_race').annotations.readOnlyHint, true); assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /pass club \(and event\)/);
+  });
+  await test('the demo clubs (Wes’s meetings): “How’s the demo club doing in the Comrades?”, “How are Coast Riders doing in the Coast Classic?”, the names typed plainly: 12 people, photos, live', async () => {
+    for (const [args, nm, app] of [[{ club: 'the demo club', event: 'Comrades' }, 'RunFast Demo Club', 'runfast'], [{ club: 'Coast Riders', event: 'Coast Classic' }, 'Coast Riders (demo)', 'windline'], [{ club: 'RunFast Demo Club' }, 'RunFast Demo Club', 'runfast'], [{ club: 'Coast Riders' }, 'Coast Riders (demo)', 'windline']]) {
+      const r = await callQ('club_in_race', args), v = r._meta && r._meta['livedot/view']; assert.equal(r.structuredContent.view, 'club', JSON.stringify(args) + ': ' + r.content[0].text.slice(0, 160));
+      assert.equal(r.structuredContent.club.name, nm); assert.equal(r.structuredContent.club.app, app); assert.equal(r.structuredContent.count, 12); assert.ok(v.members.every((m) => m.photo && /^https:\/\/(windline|runfast)\.tech\//.test(m.photo)));
+      assert.ok(v.dots.length >= 6); assert.ok(v.course.length > 100); assert.equal(v.refresh.tool, 'club_in_race');
+      assert.equal(((v.name + ' ' + v.subtitle).match(/\(demo\)/g) || []).length, 1, 'the card says (demo) once: ' + v.name + ' / ' + v.subtitle); assert.ok(!/\(demo\)/.test(v.name));
+      assert.ok(v.members.every((m) => m.goal_delta == null || /^(On pace|[+−](\d+:)?\d{1,2}:\d\d)$/.test(m.goal_delta)), 'a goal delta always m:ss: ' + v.members.map((m) => m.goal_delta).join(' '));
+    }
+    const f = await callQ('find_person', { name_or_handle: 'Coast Riders', event: 'Coast Classic' }); assert.equal(f.structuredContent.view, 'club');
+    const d = await callQ('find_person', { name_or_handle: 'demo club', event: 'Comrades' }); assert.equal(d.structuredContent.club.name, 'RunFast Demo Club');
+  });
+  await test('a route from another app’s tool: an encoded polyline (precision 5 or 6) or points, into plan_route, create_event (and its multi-day preview) and post_club_ride, read by the one route reader as a GPX', async () => {
+    const C = JSON.parse(fs.readFileSync(path.join(DIR, 'fixtures', 'comrades.json'), 'utf8')).course, pts = []; for (let i = 0; i + 2 < C.length; i += 3) pts.push([C[i], C[i + 1], C[i + 2]]); // synthetic: the Comrades course, never anyone's activity
+    const enc = (list, pr) => { const f = 10 ** pr; let la = 0, lo = 0, out = ''; const one = (v) => { v = v < 0 ? ~(v << 1) : v << 1; let o = ''; while (v >= 0x20) { o += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; } return o + String.fromCharCode(v + 63); };
+      for (const p of list) { const a = Math.round(p[0] * f), b = Math.round(p[1] * f); out += one(a - la) + one(b - lo); la = a; lo = b; } return out; };
+    const seenNow = async () => (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json());
+    const km = (r) => r.structuredContent.km;
+    const p5 = await call('plan_route', { polyline: enc(pts, 5), name: 'Saturday route', start: '2026-10-24 06:00', sport: 'run' }); assert.equal(p5.structuredContent.view, 'plan_route', p5.content[0].text.slice(0, 200)); assert.ok(km(p5) > 85 && km(p5) < 95, 'km ' + km(p5));
+    const p6 = await call('plan_route', { polyline: enc(pts, 6), start: '2026-10-24 06:00', sport: 'run' }); assert.ok(Math.abs(km(p6) - km(p5)) < 0.5, 'precision 6 read as 6: ' + km(p6));
+    const pa = await call('plan_route', { points: pts.map((p) => [p[0], p[1]]), start: '2026-10-24 06:00' }); assert.ok(Math.abs(km(pa) - km(p5)) < 0.5);
+    const po = await call('plan_route', { points: pts.map((p) => ({ lat: p[0], lng: p[1], elevation: p[2] })), start: '2026-10-24 06:00' }); assert.ok(Math.abs(km(po) - km(p5)) < 0.5);
+    const bad = await call('plan_route', { polyline: 'not a polyline ☃', start: '2026-10-24 06:00' }); assert.match(bad.content[0].text, /couldn’t be read as a route/);
+    const few = await call('plan_route', { points: [[-29.6, 30.4]], start: '2026-10-24 06:00' }); assert.match(few.content[0].text, /at least two/);
+    const T = { Authorization: 'Bearer good-token' }, half = Math.floor(pts.length / 2);
+    const ce = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'create_event', arguments: { type: 'run', race: false, name: 'Saturday long run', polyline: enc(pts, 5), start: '2026-10-24 06:00' } } }, T);
+    assert.match((await ce.json()).result.content[0].text, /^Did create_event\./); { const a = (await seenNow()).filter((x) => x.tool === 'create_event').pop().args; assert.equal(a.days.length, 1); assert.equal(a.days[0].pts.length, pts.length); assert.equal(a.tz, 'Africa/Johannesburg'); }
+    const pv = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'create_event', arguments: { files: [{ name: 'day-2', points: pts.slice(half) }, { name: 'day-1', polyline: enc(pts.slice(0, half + 1), 5) }], start: '2027-03-06 06:00', name: 'Comrades in two' } } }, T);
+    const pt = (await pv.json()).result.content[0].text; assert.match(pt, /Nothing is made yet/); assert.match(pt, /Day 1[\s\S]*Day 2/);
+    const cr = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'post_club_ride', arguments: { page: 'acme', name: 'Saturday coffee ride', points: pts.slice(0, 200), start: '2026-10-24 06:00' } } }, T);
+    const HOME = /\nThis route came from another app\. If it starts or ends at your home, trim those bits before you publish\.\n/;
+    { const ct = (await cr.json()).result.content[0].text; assert.match(ct, /^Did post_club_ride\./); assert.match(ct, HOME); } // a club's: shared
+    assert.match(pt, HOME); // a tour from another app's routes: shared, so the line in the preview
+    const pr = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'create_event', arguments: { type: 'run', name: 'My long run', polyline: enc(pts, 5), start: '2026-10-24 06:00' } } }, T);
+    assert.ok(!HOME.test((await pr.json()).result.content[0].text), 'no line for a private run');
+    const gx = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'post_club_ride', arguments: { page: 'acme', name: 'Coffee ride', gpx: `<gpx><trk><trkseg>${pts.slice(0, 50).map((p) => `<trkpt lat="${p[0]}" lon="${p[1]}"></trkpt>`).join('')}</trkseg></trk></gpx>`, start: '2026-10-24 06:00' } } }, T);
+    assert.ok(!HOME.test((await gx.json()).result.content[0].text), 'no line for the user\'s own GPX');
+    const big = await call('plan_route', { points: Array.from({ length: 60000 }, (_, i) => [-29.6 + i * 1e-6, 30.38 + i * 1e-6]), start: '2026-10-24 06:00' }); assert.equal(big.structuredContent.view, 'plan_route'); // thinned to 50,000 before the reader
+    for (const t of ['plan_route', 'create_event', 'post_club_ride']) { const d = TOOLS.find((x) => x.name === t).description; assert.match(d, /pass it as polyline or points\. Never ask the user to export a GPX if you already have the route's points\./); assert.ok(!/strava/i.test(d.split('A route can also come')[1])); }
   });
   await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;

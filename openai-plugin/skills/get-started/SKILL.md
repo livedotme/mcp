@@ -9,5 +9,6 @@ description: How to use livedot to follow someone in a live race, check race-day
 - **Fly a course:** "Fly the Comrades" uses fly_route.
 - **Cycling tours:** "What's the ProLend 2027 Durban Tour route?" uses tour_route. Route files appear only when the organiser shares them. tour_notes gives the organiser's own words.
 - **Plan a route:** plan_route takes a GPX and a start time, with no sign-in.
+- **Find a club:** find_clubs ("best running club to join in Fourways") and find_events ("cycle tours around Johannesburg") list clubs and public events near a place, with Join or I'm in to their page. No sign-in.
 - **Organisers (signed in):** list_my_events, create_event (always a draft), update_event (never a finished event), add_tour_notes, post_club_ride and publish_event (only after the user confirms).
 - Use the user's units: miles and °F for US users, km and °C otherwise.

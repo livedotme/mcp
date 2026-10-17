@@ -14,10 +14,13 @@ const TOOLS = [
   ['find_person', 'Finds someone racing live by name, livedot handle or follow link. One clear match answers at once; several become a picker, and the assistant asks one short question instead of guessing.'],
   ['where_is', 'Where they are now: km and mile, time against their goal, pace, finish time, the weather there and on the road ahead, and Follow live.'],
   ['event_status', 'How a live race is going: how long it’s been under way, how many are out, who’s in front.'],
+  ['club_in_race', 'How a club or team is doing in a live race: each of its people on the club’s public live map, with km and goal time; tap a face for their card.'],
   ['event_weather', 'Race-day weather along the course at the times people get there: the live forecast inside 10 days, 10 years of weather on the date beyond.'],
   ['fly_route', 'A flyover of the course in the chat, coloured by the weather along it, with Fly it in 3D.'],
-  ['tour_route', 'A Windline cycling tour, day by day, with the weather, and a GPX link for each day when the organiser shares route files.'],
+  ['tour_route', 'A Windline cycling tour, day by day, with the weather, a flyover of any day, and a GPX link for each day when the organiser shares route files.'],
   ['tour_notes', 'Beta: a tour organiser’s own notes for riders (what to pack, meeting points), quoted in their words.'],
+  ['find_clubs', 'Running and cycling clubs near a place, nearest first: their weekly sessions, Beginners welcome, pace groups, the next session with its weather, and Join to the club’s page.'],
+  ['find_events', 'Rides, runs, races and tours near a place and when, soonest first, with the weather (the forecast inside 10 days, typical beyond) and I’m in to the event’s page.'],
   ['plan_route', 'The weather along your own route (a GPX file or a Ride with GPS link) at the time you’ll ride or run it.'],
   ['create_event', 'Organisers, signed in with Windline or RunFast: a draft event from your GPX files. Also list_my_events, update_event, add_tour_notes, publish_event (only when you confirm) and post_club_ride.'],
 ];
@@ -115,6 +118,11 @@ footer .sp{color:var(--ink);font-weight:600;margin:0 0 14px}footer nav a{margin:
   <h2>What to ask</h2>
   <p class="sub">Follow someone on race day, check how a race is going, or see what race day will be like before you enter. Cycling on Windline, running on RunFast.</p>
   ${EXAMPLES.map((e) => `<div class="ex"><div class="txt"><p class="q">${esc(e.q)}</p><p class="a">${esc(e.a)}</p></div><div class="shot"><img src="${IMG}${e.img}.jpg" loading="lazy" width="1520" height="1400" alt="${esc(e.alt)}"></div></div>`).join('\n  ')}
+</div></section>
+
+<section id="find"><div class="wrap">
+  <h2>Find a club</h2>
+  <p class="sub">Starting in January and don’t know a single club? Ask “best running club to join in Fourways”, “beginner cycling group near Sandton” or “trail runs near Cape Town in November”. livedot lists the clubs and organisers on Windline and RunFast near that place, nearest first, with their weekly sessions, whether beginners are welcome, their pace groups and the next session with its weather. Join opens the club’s page, where you sign in or make a free account in the same step. Only approved clubs and organisers, with what they chose to share; never a person, never a private ride. Run a club that isn’t listed? Add it free: <a href="https://windline.tech/pages/?from=livedot-mcp#apply">a cycling club on Windline</a> or <a href="https://runfast.tech/app/?ref=livedot-mcp#/clubs/add">a running club on RunFast</a>. Already on one? <a href="https://windline.tech/support/get-your-club-found-on-livedot/">Get it found on livedot</a> (cycling) or <a href="https://runfast.tech/support/get-your-club-found-on-livedot/">on RunFast</a> (running).</p>
 </div></section>
 
 <section id="tools"><div class="wrap">

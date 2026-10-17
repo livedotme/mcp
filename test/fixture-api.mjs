@@ -80,16 +80,82 @@ const TOURS = {
   'alistairs-durban-tour-2027': { page: 'alistair-tours', pageName: 'Alistair\u2019s Cycle Tours', name: 'Alistair\u2019s Durban Tour 2027', routeFiles: true, pace: 24, stops: 60, tz: 'Africa/Johannesburg',
     notes: '## What to pack\n- Two bidons and a hydration pack: the valley roads are hot by 10:00.\n- Arm warmers for the 06:00 starts.\n- A spare tube, a pump and two CO2 cartridges.\n\n## How the tour runs\nWe roll out at 06:00 sharp each day. The support car carries your bag to the next hotel.\n\n## Meeting point\nDay 1: the Pietermaritzburg City Hall steps at 05:40.',
     days: [{ label: 'Day 1', from: 'Pietermaritzburg', to: 'Hillcrest', start: '2027-03-06T04:00:00.000Z', a: 0, b: 50, climb: 980 }, { label: 'Day 2', from: 'Hillcrest', to: 'Durban', start: '2027-03-07T04:00:00.000Z', a: 50, b: 95, climb: 420 }] },
+  // on its days now (a tour's tap on the back reaches its organiser: livedot's tap_on_the_back { tour })
+  'karoo-campfire-tour': { page: 'alistair-tours', pageName: 'Alistair\u2019s Cycle Tours', name: 'Karoo Campfire Tour', routeFiles: false, pace: 24, stops: 60, tz: 'Africa/Johannesburg', notes: null, tapsOn: true,
+    days: [{ label: 'Day 1', from: 'Hillcrest', to: 'Durban', start: new Date(Date.now() - 2 * 36e5).toISOString(), a: 0, b: 45, climb: 300 }, { label: 'Day 2', from: 'Durban', to: 'Ballito', start: new Date(Date.now() + 22 * 36e5).toISOString(), a: 45, b: 90, climb: 200 }] },
+  // the showcase tour, always two days out: the demo of a tour's taps while the demo is listed (the event says tapsDemo)
+  'pacific-coast-tour': { name: 'Pacific Coast Tour', routeFiles: false, pace: 25, stops: 60, tz: 'America/Los_Angeles', notes: null, tapsDemo: true,
+    days: [{ label: 'Day 1', from: 'San Francisco', to: 'Santa Cruz', start: new Date(Date.now() + 48 * 36e5).toISOString(), a: 0, b: 80, climb: 900 }] },
   'allycat-winelands-tour': { page: 'allycat', pageName: 'AllyCat', name: 'AllyCat Winelands Tour', routeFiles: false, pace: 26, stops: 45, tz: 'America/Los_Angeles', notes: null,
     days: [{ label: 'Day 1', from: 'San Francisco', to: 'Pescadero', start: new Date(Date.UTC(2026, 9, 22, 15, 0)).toISOString(), a: 0, b: 80, climb: 900 }, { label: 'Day 2', from: 'Pescadero', to: 'Santa Cruz', start: new Date(Date.UTC(2026, 9, 23, 15, 0)).toISOString(), a: 80, b: 170, climb: 700 }] },
 };
 function tourEvent(slug) {
   const t = TOURS[slug]; if (!t) return null; const G = slug === 'alistairs-durban-tour-2027' ? CR : CO;
   return { v: 1, type: 'tour', slug, name: t.name, description: '', url: 'https://tour.windline.tech/' + slug, tz: t.tz, pace: t.pace, stops: t.stops, routeFiles: t.routeFiles, branding: null, updatedAt: 0,
-    ...(t.notes ? { notes: t.notes, notesUpdatedAt: Date.UTC(2026, 9, 15, 9, 0) } : {}), days: t.days.map((d, i) => { const pts = split(G, d.a, d.b); return { id: 'd' + (i + 1), label: d.label, from: d.from, to: d.to, start: d.start, km: Math.round(d.b - d.a), climb: d.climb, pace: t.pace, stops: t.stops, points: pts }; }) };
+    tapsOn: t.tapsOn !== false, ...(t.tapsDemo ? { tapsDemo: true } : {}), ...(t.notes ? { notes: t.notes, notesUpdatedAt: Date.UTC(2026, 9, 15, 9, 0) } : {}), days: t.days.map((d, i) => { const pts = split(G, d.a, d.b); return { id: 'd' + (i + 1), label: d.label, from: d.from, to: d.to, start: d.start, km: Math.round(d.b - d.a), climb: d.climb, pace: t.pace, stops: t.stops, points: pts }; }) };
 }
+// find_clubs, find_events: clubs and events near Fourways, Johannesburg, in the contract's shape (Windline handoffs/2026-10-17-clubs-near-
+// contract.md); anywhere else, none. Starts are relative to now, so the weather column is inside its 10 days for the first rows.
+const FW = { lat: -26.0106, lon: 28.0104 };
+function near(app, what, q, now) {
+  const lat = +q.lat, lon = +q.lon, km = +q.km || 25, d = Math.hypot((lat - FW.lat) * 111, (lon - FW.lon) * 100);
+  const day = (n, h) => { const t = new Date(now + n * 864e5); t.setUTCHours(h - 2, 0, 0, 0); return t.toISOString(); };
+  const area = (name, la, lo) => ({ name, lat: la, lon: lo, country: 'ZA' });
+  const CLUBS = {
+    windline: [
+      { id: 'club:fourways-wheelers', app: 'windline', name: 'Fourways Wheelers', url: 'https://windline.tech/c/fourways-wheelers', join: 'https://windline.tech/c/fourways-wheelers#join', photo: 'https://windline.tech/img/fw.png', kind: 'club',
+        area: area('Fourways', -26.011, 28.01), sports: ['road'], sessions: [{ day: 'tue', time: '17:30', place: 'Fourways Mall', sport: null }, { day: 'sat', time: '06:00', place: 'Fourways', sport: null }], sessionsLine: 'Tue 17:30 from Fourways Mall · Sat 06:00 from Fourways',
+        beginnersWelcome: true, paceGroups: '25–30 km/h', whoFor: 'Anyone with a road bike', next: { start: day(2, 6), place: 'Fourways', kind: 'ride', name: 'Saturday Bunch', url: 'https://ride.windline.tech/fw-saturday' }, km: 0 },
+      { id: 'organiser:jozi-tours', app: 'windline', name: 'Jozi Tours', url: 'https://windline.tech/o/jozi-tours', join: 'https://windline.tech/o/jozi-tours#join', photo: null, kind: 'organiser',
+        area: area('Johannesburg', -26.204, 28.047), sports: ['tours', 'road'], sessions: [], sessionsLine: '', beginnersWelcome: false, paceGroups: null, whoFor: null, next: { start: day(28, 6), place: 'Muldersdrift', kind: 'tour', name: 'Cradle 3-Day', url: 'https://tour.windline.tech/cradle-3-day' }, km: 21.8 },
+    ],
+    runfast: [
+      { id: 'club:fourways-striders', app: 'runfast', name: 'Fourways Striders', url: 'https://runfast.tech/c/fourways-striders', join: 'https://runfast.tech/c/fourways-striders#join', photo: 'https://runfast.tech/img/fs.png', kind: 'club',
+        area: area('Fourways', -26.011, 28.01), sports: ['road-run'], sessions: [{ day: 'tue', time: '17:30', place: 'Fourways Mall', sport: null }, { day: 'sat', time: '06:00', place: 'Montecasino', sport: null }], sessionsLine: 'Tue 17:30 from Fourways Mall · Sat 06:00 from Montecasino',
+        beginnersWelcome: true, paceGroups: '5:30–7:00 /km', whoFor: 'Anyone who can run 5 km', next: { start: day(1, 17), place: 'Fourways Mall', kind: 'session' }, km: 0 },
+      { id: 'club:jozi-trail', app: 'runfast', name: 'Jozi Trail Runners', url: 'https://runfast.tech/c/jozi-trail', join: 'https://runfast.tech/c/jozi-trail#join', photo: null, kind: 'club',
+        area: area('Northcliff', -26.143, 27.968), sports: ['trail-run'], sessions: [{ day: 'sun', time: '06:30', place: 'Northcliff Hill', sport: null }], sessionsLine: 'Sun 06:30 from Northcliff Hill', beginnersWelcome: false, paceGroups: null, whoFor: null,
+        next: { start: day(3, 6), place: 'Northcliff Hill', kind: 'session' }, km: 15.4 },
+    ],
+  };
+  const EVENTS = {
+    windline: [
+      { id: 'ride:fw-saturday', app: 'windline', name: 'Saturday Bunch', url: 'https://ride.windline.tech/fw-saturday', join: 'https://windline.tech/c/fourways-wheelers#join', photo: 'https://windline.tech/img/fw.png', kind: 'ride', area: area('Fourways', -26.012, 28.009), sports: ['road'],
+        club: { id: 'club:fourways-wheelers', name: 'Fourways Wheelers', url: 'https://windline.tech/c/fourways-wheelers' }, sessions: [], beginnersWelcome: true, paceGroups: '25–30 km/h', start: day(2, 6), km: 0.1 },
+      { id: 'tour:cradle-3-day', app: 'windline', name: 'Cradle 3-Day', url: 'https://tour.windline.tech/cradle-3-day', join: 'https://windline.tech/o/jozi-tours#join', photo: null, kind: 'tour', area: area('Muldersdrift', -26.03, 27.85), sports: ['road', 'tours'],
+        club: { id: 'organiser:jozi-tours', name: 'Jozi Tours', url: 'https://windline.tech/o/jozi-tours' }, sessions: [], beginnersWelcome: false, paceGroups: null, start: day(28, 6), km: 16.1 },
+    ],
+    runfast: [
+      { id: 'run:rSat', app: 'runfast', name: 'Saturday Long Run', url: 'https://runfast.tech/r/rSat', join: 'https://runfast.tech/r/rSat', photo: 'https://runfast.tech/img/fs.png', kind: 'run', area: area('Montecasino', -26.012, 28.009), sports: ['road-run'],
+        club: { id: 'club:fourways-striders', name: 'Fourways Striders', url: 'https://runfast.tech/c/fourways-striders' }, sessions: [], beginnersWelcome: true, paceGroups: '5:30–7:00 /km', start: day(2, 6), km: 0.1 },
+    ],
+  };
+  let list = (what === 'clubs' ? CLUBS : EVENTS)[app].filter((x) => d + x.km <= km);
+  if (q.sport) list = list.filter((x) => x.sports.includes(q.sport) || (!x.sports.length));
+  if (what === 'clubs' && q.beginners === 'true') list = list.filter((x) => x.beginnersWelcome);
+  if (what === 'events') { const from = q.from ? Date.parse(q.from + 'T00:00:00Z') : now, to = q.to ? Date.parse(q.to + 'T00:00:00Z') + 864e5 : now + 120 * 864e5; list = list.filter((x) => Date.parse(x.start) >= from && Date.parse(x.start) < to).map((x) => ({ ...x, next: { start: x.start, place: x.area.name, kind: x.kind, name: x.name, url: x.url } })); }
+  return [200, { v: 1, app, query: { lat, lon, km }, count: list.length, results: list }];
+}
+// clubs and their people on the club's live map (GET /api/live/club/<slug>: Findable members only, as the apps answer anyone)
+const CLUBS = {
+  runfast: { 'durban-striders': { name: 'Durban Striders', logo: 'https://runfast.tech/img/clubs/striders.png', colour: '#123A6B', members: () => [7, 20, 33, 46, 59, 72, 85, 98].map((i) => RUN[i]) },
+    'uct-running-club': { name: 'UCT Running Club', logo: 'https://evil.example/logo.png', colour: null, members: () => [111, 124, 137].map((i) => RUN[i]) } },
+  windline: { 'bay-wheelers': { name: 'Bay Wheelers', logo: null, colour: '#0B4F3C', members: () => [9, 22, 35, 48, 61].map((i) => RIDE[i]) } },
+};
 function route(app, p, q, now) {
   let m;
+  if ((m = p.match(/^\/(clubs|events)\/near$/))) return near(app, m[1], q, now);
+  if ((m = p.match(/^\/live\/club\/([a-z0-9-]+)$/))) { const c = CLUBS[app][m[1]]; if (!c) return [404, { error: 'There’s no club at this address.' }];
+    const L = c.members().map((x) => (app === 'windline' ? rider(x, now) : runner(x, now))).sort((a, b) => b.km - a.km); return [200, { now, ...(app === 'windline' ? { club: { slug: m[1], name: c.name } } : {}), [app === 'windline' ? 'riders' : 'runners']: L }]; }
+  if (p === '/profile' && (q.q || q.slug)) { // clubs (the apps' page search: every word the start of a word in the name)
+    const cl = Object.entries(CLUBS[app]).filter(([slug, c]) => (q.slug ? slug === q.slug : hit(c.name + ' ' + slug, q.q))).map(([slug, c]) => ({ v: 1, slug, app, sport: app === 'windline' ? 'cycling' : 'running', type: 'club', name: c.name, logo: c.logo, colour: c.colour, url: `https://${app}.tech/c/${slug}`, members: 30, live: 0 }));
+    if (cl.length) return [200, { now, profiles: cl }];
+  }
+  if (app === 'windline' && p === '/event/find') { // Windline's tourfind.js, stood in for: a tour's name words and its page's name; a word in no tour counts against none
+    const ws = (t) => words(String(t).replace(/['\u2019]s\b/g, '')).filter((w) => !['the', 'a', 'of', 'tour', 'tours', 's', 'where', 'is'].includes(w)), qw = ws(q.q || '');
+    const sc = Object.entries(TOURS).map(([slug, t]) => { const nw = ws(t.name), bw = ws(t.pageName || ''), inName = qw.filter((w) => nw.some((y) => y.startsWith(w))).length; return { slug, t, inName, n: inName + qw.filter((w) => !nw.some((y) => y.startsWith(w)) && bw.some((y) => y.startsWith(w))).length }; }).filter((x) => x.inName);
+    const top = Math.max(0, ...sc.map((x) => x.n)); return [200, { tours: sc.filter((x) => x.n === top).map((x) => ({ slug: x.slug, name: x.t.name, by: x.t.pageName || null, url: 'https://tour.windline.tech/' + x.slug })) }];
+  }
   if (app === 'windline' && (m = p.match(/^\/event\/tour\/([a-z0-9-]+)$/))) { const ev = tourEvent(m[1]); return ev ? [200, ev] : [404, { error: 'Not found' }]; }
   if (app === 'windline' && p === '/profile' && (q.q || q.slug)) {
     const pages = [...new Set(Object.values(TOURS).map((t) => t.page))].map((slug) => ({ slug, name: Object.values(TOURS).find((t) => t.page === slug).pageName }));
@@ -136,6 +202,8 @@ function mcpStub(req, res, p, raw) {
   if (p === '/miss') { MCP_SEEN.push({ tool: 'miss', args: b, proxy: req.headers['x-livedot-proxy'] || null, ip: req.headers['x-livedot-client-ip'] || null }); return j(200, { ok: true }); }
   if (p === '/tap') { // Windline's /api/mcp/tap, stood in for: the handle or pid decides the answer (the real rules are riders.js's and live.js's)
     MCP_SEEN.push({ tool: 'tap', args: b, auth: req.headers.authorization || null });
+    if (b.tour === 'pacific-coast-tour') return j(200, { ok: true, demo: true, tour: 'Pacific Coast Tour', organiser: null, named: !!b.name, count: null });
+    if (b.tour) { if (!/campfire/.test(b.tour)) return j(404, { ok: false, error: 'That tour isn’t open for taps on the back.' }); return j(200, { ok: true, tour: 'Karoo Campfire Tour', organiser: 'Alistair’s Cycle Tours', named: !!(b.name || req.headers.authorization), count: 4 }); }
     const who = b.handle || b.pid || b.code || '';
     if (/^(pprivate|private)/.test(who)) return j(404, { ok: false, error: 'They aren’t live just now.' });
     if (/tapsoff/.test(who)) return j(403, { ok: false, error: 'They’ve turned taps on the back off.' });
@@ -163,7 +231,8 @@ http.createServer((req, res) => {
   const um = new URL(req.url, 'http://x');
   if (um.pathname.startsWith('/windline/api/mcp/')) { let raw = ''; req.on('data', (c) => (raw += c)); req.on('end', () => mcpStub(req, res, um.pathname.replace('/windline/api/mcp', ''), raw)); return; }
   if (um.pathname === '/mcp-seen') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(MCP_SEEN)); }
-  const u = new URL(req.url, 'http://x'), m = u.pathname.match(/^\/(windline|runfast)\/api(\/.*?)\/?$/), now = Date.now();
-  const [code, body] = m ? route(m[1], m[2], Object.fromEntries(u.searchParams), now) : [404, { error: 'Not found' }];
+  // /quiet/<app>/api/…: the same, with no race live (as production is most of the day: only the demos run)
+  const u = new URL(req.url, 'http://x'), m = u.pathname.match(/^\/(quiet\/)?(windline|runfast)\/api(\/.*?)\/?$/), now = Date.now();
+  const [code, body] = m ? (m[1] && m[3] === '/profile' && u.searchParams.get('live') ? [200, { now, total: 0, people: 0, countries: 0, events: [], next: null }] : route(m[2], m[3], Object.fromEntries(u.searchParams), now)) : [404, { error: 'Not found' }];
   res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body));
 }).listen(PORT, () => console.log(`fixture API on http://localhost:${PORT} (sample data)`));

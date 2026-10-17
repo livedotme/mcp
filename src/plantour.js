@@ -92,7 +92,7 @@ export async function planTour(ctx, files, opts = {}) {
   // read every file (Windline's reader: trk or rte, every segment, thinned as the dashboard does); say which ones fail and why
   const got = await Promise.all(list.map(async (f, i) => {
     const label = String(f.name || f.filename || '').trim().slice(0, 80) || `File ${i + 1}`;
-    const src = f.gpx ? { gpx: f.gpx } : f.url ? { url: f.url } : f.download_url ? { url: f.download_url } : null;
+    const src = f.polyline != null || f.points != null ? { polyline: f.polyline, points: f.points, name: f.name } : f.gpx ? { gpx: f.gpx } : f.url ? { url: f.url } : f.download_url ? { url: f.download_url } : null;
     if (!src) return { label, err: `${label} has no GPX in it (attach the file, or give its link).` };
     try { return { label, routes: await readRoutes(ctx, src) }; }
     catch (e) { return { label, err: String(e.message || 'couldn’t be read.').replace(/^(That file|That link’s GPX|That route|That link)\b/, label) }; }

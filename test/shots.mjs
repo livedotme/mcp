@@ -36,6 +36,11 @@ const SHOTS = [
   { name: 'fly-nyc', q: 'What does the NYC Marathon route look like?', tool: 'fly_route', args: { event_or_route: 'NYC Marathon' }, fly: 12000 },
   { name: 'tour-route', q: 'What\u2019s Alistair\u2019s Durban Tour 2027 route? Give me the GPX files.', tool: 'tour_route', args: { tour: 'Alistair\u2019s Durban Tour 2027' } },
   { name: 'tour-no-files', q: 'Send me the GPX for the AllyCat tour', tool: 'tour_route', args: { tour: 'AllyCat' } },
+  { name: 'club-comrades', q: 'How’s the demo club doing in the Comrades?', tool: 'club_in_race', args: { club: 'the demo club', event: 'Comrades' } },
+  { name: 'club-coast', q: 'How are Coast Riders doing in the Coast Classic?', tool: 'club_in_race', args: { club: 'Coast Riders', event: 'Coast Classic', units: 'imperial' } },
+  { name: 'club-to-person', q: 'How’s the demo club doing in the Comrades?', tool: 'club_in_race', args: { club: 'the demo club', event: 'Comrades' }, click: 1, sel: '.mem' },
+  { name: 'club-phone', q: 'How are Coast Riders doing?', tool: 'club_in_race', args: { club: 'Coast Riders' }, width: 390 },
+  { name: 'club-dark', q: 'How’s the demo club doing in the Comrades?', tool: 'club_in_race', args: { club: 'the demo club', event: 'Comrades' }, theme: 'dark' },
   { name: 'person-phone', q: 'Where’s Megan?', tool: 'where_is', args: { handle: 'megan' }, width: 390 },
 ];
 
@@ -52,7 +57,7 @@ try {
     const frame = () => page.frames().find((x) => x !== page.mainFrame());
     const until = async (sel, ms) => { const t = Date.now(); while (Date.now() - t < ms) { const f = frame(); if (f && await f.evaluate((q) => !!document.querySelector(q), sel).catch(() => false)) return true; await page.waitForTimeout(250); } return false; };
     await until('.card .hd', 30000);
-    if (s.click != null) { await frame().evaluate((n) => document.querySelectorAll('.row')[n].click(), s.click); await until('.map', 60000); }
+    if (s.click != null) { await frame().evaluate(([n, sel]) => document.querySelectorAll(sel)[n].click(), [s.click, s.sel || '.row']); await until(s.sel ? '.hd [data-back]' : '.map', 60000); await until('.map', 60000); }
     if (s.type) { await frame().evaluate((t) => { const q = document.getElementById('q'); q.value = t; q.dispatchEvent(new Event('input')); }, s.type); await page.waitForTimeout(400); }
     const isMap = await until('.map', 500);
     if (isMap && !(await until('.map.gl-on', 20000))) console.log(`  ${s.name}: the light map didn't load; the plain map is shown`);

@@ -7,9 +7,10 @@
 //   labelled "Based on 10 years of weather on this date".
 import { WL } from './gen/engine.js';
 import { EVENTS } from './gen/events.js';
-import { SITE, DEMOS, getJson } from './reads.js';
+import { SITE, DEMOS, getJson, demoListed } from './reads.js';
 import { colourOf, KEY, HEAT_WORDS } from './weather.js';
 import { clock, ago } from './words.js';
+import { toIso } from './writes.js';
 
 
 const HISTORIC = 'https://windline.tech/api/historic';
@@ -35,9 +36,10 @@ async function candidates(R, q, year, now) {
   const out = [];
   // livedot's published previews
   for (const e of EVENTS) { const s = score(`${e.name} ${e.event} ${e.slug.replace(/-weather$/, '')}`, q); if (s) out.push({ s: s + 1, kind: 'preview', e }); }
-  // the demo races (they run every day): asked for by name with "demo", or when nothing else has that name
+  // the demo races (they run every day): by name like any other event while the app lists its demo (config/demo.listed), with "demo"
+  // always, and when nothing else has that name
   const wantDemo = /\bdemo\b/i.test(q);
-  for (const d of DEMOS) { const s = score(d.name + ' ' + d.words.join(' '), q); if (s && (wantDemo || !out.length)) out.push({ s, kind: 'demo', d }); }
+  for (const d of DEMOS) { const s = score(d.name + ' ' + d.words.join(' '), q); if (s && (wantDemo || !out.length || (await demoListed(R, d.app)))) out.push({ s, kind: 'demo', d }); }
   // the apps' races coming up (14 days), on organisers' pages
   const up = await Promise.all(['windline', 'runfast'].map((a) => R.profile(a, 'upcoming=1&limit=200')));
   up.forEach((r, i) => (r.ok && r.body && r.body.events || []).forEach((e) => { const s = score(e.name + ' ' + ((e.organiser && e.organiser.name) || ''), q); if (s) out.push({ s: s + 0.5, kind: 'race', app: e.app || ['windline', 'runfast'][i], e }); }));
@@ -210,10 +212,19 @@ export async function flyRoute(ctx, args, sponsorLine) {
 const slugify = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/['\u2019]s\b/g, 's').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
 /** A published public tour by its name, its address or its organiser's or club's name → { ev (GET /api/event/tour/<slug>), page } or
  *  { list } (several) or null. Only the public reads: the event read, and GET /api/profile (?q= pages, ?slug= their events). */
-async function findTour(R, q) {
+export async function findTour(R, q) {
   const tryEv = async (slug) => { if (!/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug)) return null; const r = await R.event('tour', slug); return r.ok && r.body && Array.isArray(r.body.days) ? r.body : null; };
   const m = String(q).match(/tour\.windline\.tech\/([a-z0-9-]+)/i); if (m) { const ev = await tryEv(m[1].toLowerCase()); return ev ? { ev } : null; }
   const direct = await tryEv(slugify(q)); if (direct) return { ev: direct };
+  // one search over every published public tour: the words of its name and of who its page says puts it on (Windline's
+  // GET /api/event/find: "Alistair Cronk's Durban tour", "Durban"); the page search below if it can't answer
+  const tf = await R.tourFind(q).catch(() => null);
+  if (tf && tf.ok && tf.body && Array.isArray(tf.body.tours)) {
+    let L = tf.body.tours; const yr = words(q).find((x) => /^\d{4}$/.test(x)); if (L.length > 1 && yr) { const L2 = L.filter((x) => String(x.name).includes(yr)); if (L2.length) L = L2; }
+    if (L.length > 1) return { list: L.slice(0, 5).map((x) => x.name + (x.by ? ` (${x.by})` : '')) };
+    if (L.length === 1) { const ev = await tryEv(L[0].slug); if (ev) return { ev, page: L[0].by ? { name: L[0].by } : undefined }; }
+    if (!L.length) return null;
+  }
   // an organiser's or club's page: its tours (upcoming first, then past), matched on the words that aren't the page's own name
   const words2 = words(q).filter((x) => !STOP.has(x) && x !== 'tour' && x !== 'tours' && x !== 's');
   const pages = await R.profile('windline', 'q=' + encodeURIComponent(words2.join(' ').slice(0, 60) || q)).catch(() => null);
@@ -236,12 +247,32 @@ async function findTour(R, q) {
 const triplesOf = (pts) => (Array.isArray(pts) ? pts.map((p) => [p[0], p[1], p[2] == null ? null : p[2]]) : []);
 const notFound = (q) => `I couldn't find a published Windline tour called "${q}". Try its full name, its address (tour.windline.tech/<name>) or its organiser's name.`;
 
+/** One day of a tour from the air (Wes, 17 Oct: "give me the fly over page for day 3"): the in-chat flyover of that day, coloured by
+ *  the weather (as fly_route), and Windline's own Fly the route for that day (app.windline.tech/fly?e=tour/<slug>&d=<n>, as the tour
+ *  page links it). Published public tours only (findTour reads nothing else); a past tour is only read, never changed. */
+async function tourDayFly(ctx, args, sponsorLine, ev, P, days, f) {
+  const n = parseInt(String(args.day).replace(/[^0-9]/g, ''), 10), d = Number.isFinite(n) && n >= 1 ? ev.days[n - 1] : null;
+  if (!d || !d.points || d.points.length < 2 || !d.start) {
+    const x = `${ev.name} has ${ev.days.length} day${ev.days.length === 1 ? '' : 's'}${d ? `, and day ${n} has no route yet` : ''}. Ask the user which day (1 to ${ev.days.length}).`;
+    return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', message: x }, map: null };
+  }
+  const i = days.indexOf(d), one = { ...P, name: `${ev.name}, ${d.label || 'Day ' + n}`, days: [P.days[i]] };
+  const dayUrl = `${ev.url}/day-${n}`, fly = `https://app.windline.tech/fly?e=tour/${encodeURIComponent(ev.slug)}&d=${n}&back=${encodeURIComponent(dayUrl)}`;
+  const out = await eventWeather(ctx, { event: ev.name, units: args.units, _plan: one }, sponsorLine);
+  const name = `${ev.name}, ${d.label || 'Day ' + n}`, legs = [d.from, d.to].filter(Boolean).join(' to ');
+  const head = `Here's ${(d.label || 'Day ' + n).replace(/^Day/, 'day')} of ${ev.name} from the air${legs ? ': ' + legs : ''}, ${f.dist(d.km)}${d.climb ? `, ${f.U.height(d.climb).toLocaleString('en-GB')} ${f.U.HEIGHT} of climbing` : ''}, with the weather along it. Press play on the map to fly it.`;
+  out.text = head + '\n' + out.text.replace(/\nMore:.*$/m, `\nFly it in 3D: ${fly}\nThe day's page: ${dayUrl}`);
+  out.structured = { ...out.structured, view: 'tour_route', tour: ev.name, url: ev.url, day: n, day_url: dayUrl, fly_url: fly, route_files: ev.routeFiles === true, slug: ev.slug,
+    days: [{ ...(out.structured.days && out.structured.days[0] || {}), label: d.label, from: d.from, to: d.to, km: d.km, climb_m: d.climb, start: d.start }] };
+  if (out.map) { out.map.kind = 'fly'; out.map.name = name; out.map.fly = { url: fly, label: 'Fly it in 3D' }; out.map.follow = { url: dayUrl, label: 'Open the day' }; out.map.headline = f.dist(d.km).replace(/ \(.*\)/, ''); out.map.race = legs || out.map.race; out.map.tap = null; }
+  return out;
+}
 export async function tourRoute(ctx, args, sponsorLine) {
   const { R, f0 } = ctx, q = String(args.tour || '').trim();
   if (!q) return { text: 'Which tour?\n\n' + sponsorLine, structured: { view: 'none' }, map: null };
   const t = await findTour(R, q);
-  if (!t) return { text: notFound(q) + '\n\n' + sponsorLine, structured: { view: 'none' }, map: null };
-  if (t.list) { const x = `Several tours match "${q}": ${t.list.join('; ')}. Ask the user which one.`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', tours: t.list }, map: null }; }
+  if (!t) return { text: notFound(q) + '\n\n' + sponsorLine, structured: { view: 'none', message: notFound(q) }, map: null };
+  if (t.list) { const x = `Several tours match "${q}": ${t.list.join('; ')}. Ask the user which one.`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', message: x, tours: t.list }, map: null }; }
   const ev = t.ev, f = f0(ev.tz), days = ev.days.filter((d) => d.points && d.points.length > 1 && d.start);
   const dayLine = (d) => `${d.label || 'Day'}: ${[d.from, d.to].filter(Boolean).join(' to ')}, ${f.dist(d.km)}${d.climb ? `, ${f.U.height(d.climb).toLocaleString('en-GB')} ${f.U.HEIGHT} of climbing` : ''}, start ${clock(Date.parse(d.start), ev.tz, f)}.`;
   // route files: one GPX link a day (Windline's GET /api/event/tour/<slug>/day/<n>.gpx: the tour page's own file), only while the
@@ -253,12 +284,20 @@ export async function tourRoute(ctx, args, sponsorLine) {
   const P = { name: ev.name, sport: 'ride', tz: ev.tz, url: ev.url, app: 'windline', timedFor: `the organiser's plan (${f.speedShort((days[0] && days[0].pace) || ev.pace || 25)}${ev.stops ? ', ' + ev.stops + ' min of stops a day' : ''})`,
     days: days.map((d) => ({ name: d.label || [d.from, d.to].join(' to '), date: d.start.slice(0, 10), startMs: Date.parse(d.start), pts: triplesOf(d.points), km: d.km, kmh: d.pace || ev.pace || 25, stops: d.stops ?? ev.stops ?? 0 })),
     extraLines: [] };
+  if (args.day != null && args.day !== '') return tourDayFly(ctx, args, sponsorLine, ev, P, days, f);
   const out = await eventWeather(ctx, { event: ev.name, units: args.units, _plan: P }, sponsorLine);
   const head = `${ev.name}: ${days.length} day${days.length === 1 ? '' : 's'}, ${f.dist(days.reduce((s, d) => s + (d.km || 0), 0))}${t.page ? ', by ' + t.page.name : ''}.\n` + days.map(dayLine).join('\n') + '\n' + files + '\n\nThe weather:';
   out.text = head + ' ' + out.text.replace(/\nMore:.*$/m, `\nTour page: ${ev.url}`);
   out.structured = { ...out.structured, view: 'tour_route', tour: ev.name, url: ev.url, route_files: ev.routeFiles === true, gpx: ev.routeFiles === true ? days.map((d) => ({ day: d.label, url: gpxOf(ev.days.indexOf(d)) })) : [],
     days: days.map((d, i) => ({ ...(out.structured.days && out.structured.days[i] || {}), label: d.label, from: d.from, to: d.to, km: d.km, climb_m: d.climb, start: d.start })) };
-  if (out.map) { out.map.follow = { url: ev.url, label: 'Open the tour' }; if (ev.routeFiles === true && days.length) out.map.fly = { url: gpxOf(ev.days.indexOf(days[0])), label: days.length > 1 ? 'Day 1 GPX' : 'Download the GPX' }; if (ev.routeFiles !== true) out.map.updated = 'The organiser hasn\'t made the route files available. · ' + out.map.updated; out.map.ahead = days.slice(0, 8).map((d, i) => ({ ...(out.map.ahead[i] || {}), url: ev.routeFiles === true ? gpxOf(ev.days.indexOf(d)) : null, k: (d.label || 'Day ' + (i + 1)) + ' · ' + [d.from, d.to].filter(Boolean).join(' → '), sub: f.dist(d.km).replace(/ \(.*\)/, '') + (d.climb ? ' · ' + f.U.height(d.climb).toLocaleString('en-GB') + ' ' + f.U.HEIGHT + ' up' : '') + (out.map.ahead[i] ? ' · ' + out.map.ahead[i].sub : '') })); }
+  // a tap on the back for the tour, to its organiser (Wes, 17 Oct: "they read around the campfire at night"): on its days, while the
+  // organiser's switches are on (the event's tapsOn), as Windline's tapTourAs decides: from an hour before day 1 to midnight after the last
+  const st = days.map((d) => Date.parse(d.start)).sort((a, b) => a - b), lastDay = st.length ? new Date(st[st.length - 1]).toLocaleDateString('en-CA', { timeZone: ev.tz || 'UTC' }) : null;
+  const closes = lastDay ? Date.parse(toIso(`${new Date(Date.parse(lastDay + 'T12:00:00Z') + 864e5).toISOString().slice(0, 10)} 00:00`, ev.tz || 'UTC')) : 0, nowT = Date.now();
+  const canTap = ev.tapsDemo === true || (ev.tapsOn === true && st.length > 0 && nowT >= st[0] - 36e5 && nowT < closes); // tapsDemo: the showcase tour, the demo of a tour's taps while the demo is listed
+  out.structured.can_tap = canTap; out.structured.slug = ev.slug;
+  if (canTap) out.text = out.text.replace(/\nTour page:/, '\nYou can give the tour a tap on the back: the organiser reads them out at night.\nTour page:');
+  if (out.map) { out.map.tap = canTap ? { tour: ev.slug, first: null, finished: false, label: 'Give the tour a tap on the back' } : null; out.map.follow = { url: ev.url, label: 'Open the tour' }; if (ev.routeFiles === true && days.length) out.map.fly = { url: gpxOf(ev.days.indexOf(days[0])), label: days.length > 1 ? 'Day 1 GPX' : 'Download the GPX' }; if (ev.routeFiles !== true) out.map.updated = 'The organiser hasn\'t made the route files available. · ' + out.map.updated; out.map.ahead = days.slice(0, 8).map((d, i) => ({ ...(out.map.ahead[i] || {}), url: ev.routeFiles === true ? gpxOf(ev.days.indexOf(d)) : null, k: (d.label || 'Day ' + (i + 1)) + ' · ' + [d.from, d.to].filter(Boolean).join(' → '), sub: f.dist(d.km).replace(/ \(.*\)/, '') + (d.climb ? ' · ' + f.U.height(d.climb).toLocaleString('en-GB') + ' ' + f.U.HEIGHT + ' up' : '') + (out.map.ahead[i] ? ' · ' + out.map.ahead[i].sub : '') })); }
   return out;
 }
 
@@ -266,11 +305,26 @@ export async function tourRoute(ctx, args, sponsorLine) {
 export async function tourNotes(ctx, args, sponsorLine) {
   const { R } = ctx, q = String(args.tour || '').trim();
   const t = q ? await findTour(R, q) : null;
-  if (!t) return { text: notFound(q) + '\n\n' + sponsorLine, structured: { view: 'none' }, map: null };
-  if (t.list) { const x = `Several tours match "${q}": ${t.list.join('; ')}. Ask the user which one.`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', tours: t.list }, map: null }; }
+  if (!t) return { text: notFound(q) + '\n\n' + sponsorLine, structured: { view: 'none', message: notFound(q) }, map: null };
+  if (t.list) { const x = `Several tours match "${q}": ${t.list.join('; ')}. Ask the user which one.`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'none', message: x, tours: t.list }, map: null }; }
   const ev = t.ev, notes = typeof ev.notes === 'string' ? ev.notes.trim().slice(0, 6000) : '';
   if (!notes) { const x = `The organiser of ${ev.name} hasn't written any notes for riders yet. The tour page: ${ev.url}`; return { text: x + '\n\n' + sponsorLine, structured: { view: 'tour_notes', tour: ev.name, notes: null, url: ev.url }, map: null }; }
   const upd = Number(ev.notesUpdatedAt) > 0 ? new Date(Number(ev.notesUpdatedAt)).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: ev.tz || 'UTC' }) : null;
   const text = `${ev.name}: the organiser's notes for riders (beta), in their own words${upd ? ', last updated ' + upd : ''}. Quote and summarise only these; never add to them, and say so if they don't cover the question.\n\n` + notes.split('\n').map((l) => '> ' + l).join('\n') + `\n\nTour page: ${ev.url}\n\n${sponsorLine}`;
   return { text, structured: { view: 'tour_notes', beta: true, tour: ev.name, notes, notes_updated: upd ? new Date(Number(ev.notesUpdatedAt)).toISOString() : null, url: ev.url, sponsor_line: sponsorLine }, map: null };
+}
+
+/** find_clubs and find_events (discover.js): the weather for a session or event where it starts, in a few words. Within the
+ *  forecast's 10 days: the forecast, rated by the engine ("Good · 18°, dry"); beyond: 10 years of weather on that date ("Usually
+ *  24°, rain on about 3 days in 10"). The start and a point 1 km on, timed from its start, as the event pages time a course. */
+export async function weatherAt(R, { lat, lon, startMs, sport }, f, now = Date.now()) {
+  if (!isFinite(startMs) || !isFinite(lat) || !isFinite(lon)) return null;
+  const d = { name: '', startMs, pts: [[lat, lon], [lat + 0.009, lon]], km: 1, kmh: sport === 'run' ? 10 : 25, stops: 0 };
+  const fc = !WL.opensAt(new Date(startMs).toISOString(), now) && startMs > now - 864e5;
+  const w = fc ? await forecastDay(R, d, sport, now) : await historicDay(d, sport); if (!w) return null;
+  const t = w.a.segs[0].w.temp;
+  if (!fc) return w.high == null ? null : { basis: 'typical', text: `Usually ${f.degShort(w.high)}, rain on ${daysIn10(w.wet)}`, temp_c: Math.round(w.high) };
+  const v = WL.verdictOf(w.a, w.source, f.U), a = w.a;
+  const rain = a.rain >= 0.3 ? `${f.U.wet(a.rain)} ${f.U.RAIN} rain` : a.rainChance != null && a.rainChance >= 30 ? `${a.rainChance}% chance of rain` : 'dry';
+  return { basis: 'forecast', rating: v.rating, text: `${WL.RATE[v.rating]} · ${f.degShort(t)}, ${rain}`, temp_c: Math.round(t), fetched: w.fetched || null };
 }

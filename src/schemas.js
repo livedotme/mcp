@@ -60,11 +60,20 @@ const EVENT_WEATHER = {
   events: A('Several events matched: their names. Ask the user which one.'),
 };
 
+const CLUB = {
+  club: O('The club: name, app (windline or runfast), slug, url (its page).'),
+  race: SN('The race (or ride) its members are in.'),
+  count: N('How many of the club\'s people are on its live map in that race.'), finished_count: N('How many of them have finished.'), on_course: N('How many are on the course.'),
+  members: A('Each member on the club\'s live map (Findable): id (for where_is), name, photo, status, sub (km and goal delta, or the finish time), km (null near the start or finish), goal_delta, can_tap.'),
+  can_tap_team: B('A team tap would reach at least one of them now.'), club_url: S('The club\'s live map.'),
+  clubs: A('Several clubs matched: name, app, people. Ask which one.'),
+};
 export const OUTPUT_SCHEMAS = {
-  tap_on_the_back: out(['tap'], { ...PERSON, sent: B('The tap went through.'), finished: B('They\'d finished: it landed as a congratulation.'), named: B('The tap carried a name.'), taps: X('Their taps so far, with this one.') }, 'The tap, and their live answer.'),
-  find_person: out(['person', 'picker'], PERSON, 'One match: the person\'s live answer (view "person"). Several: the 5 most likely (view "picker").'),
+  club_in_race: out(['club'], CLUB, 'A club or team in a race: its people on the club\'s live map, with their km and goal deltas.'),
+  tap_on_the_back: out(['tap'], { ...PERSON, sent: B('The tap went through.'), finished: B('They\'d finished: it landed as a congratulation.'), named: B('The tap carried a name.'), taps: X('Their taps so far, with this one.'), tour: X('A tour\'s tap: the tour (the tap went to its organiser).'), ...CLUB, taps_sent: N('A team tap: how many members got one.'), team: SN('A team tap: the club.') }, 'The tap, and their live answer (or, for a tour, who reads it out).'),
+  find_person: out(['person', 'picker', 'club'], { ...PERSON, ...CLUB }, 'One match: the person\'s live answer (view "person"). Several: the 5 most likely (view "picker").'),
   where_is: out(['person'], PERSON, 'The person\'s live answer: where they are, time against their goal, the finish it points to and the weather there.'),
-  event_status: out(['event'], {
+  event_status: out(['event', 'club'], { ...CLUB,
     name: SN('The race\'s name.'), app: { type: 'string', enum: ['windline', 'runfast'] }, sport: S('cycling or running.'),
     started: SN('When it got under way (ISO).'), on_map: X('How many people are on livedot\'s map.'), finished: N('How many have finished.'),
     leaders: A('The leaders the public race map shows: name, and finished (time) or km and where (null km near the start or finish).'),
@@ -74,7 +83,8 @@ export const OUTPUT_SCHEMAS = {
   event_weather: out(['event_weather'], EVENT_WEATHER, 'The weather for an event along its course, rated by the Windline forecast engine.'),
   fly_route: out(['fly_route'], { ...EVENT_WEATHER, fly_url: S('Fly it in 3D.'), km: N('The course\'s length in km.') }, 'A flyover of the course, with the weather along it.'),
   tour_route: out(['tour_route'], {
-    tour: SN('The tour\'s name.'), url: SN('The tour\'s page.'), route_files: B('Whether the organiser lets riders download the route files.'),
+    can_tap: B('A tap on the back for the tour would reach its organiser now (its days; their switches on).'), slug: SN('The tour\'s address (for tap_on_the_back tour).'),
+    tour: SN('The tour\'s name.'), url: SN('The tour\'s page.'), day: N('With day: the day flown over (1 for day 1).'), day_url: SN('With day: that day\'s page.'), fly_url: SN('With day: Fly it in 3D, Windline\'s Fly the route for that day.'), route_files: B('Whether the organiser lets riders download the route files.'),
     gpx: A('When route_files: each day\'s GPX link (day, url). Never make one up.'),
     days: A('Each day: label, from, to, km, climb_m, start (ISO), and its weather.'), tours: A('Several tours matched: their names. Ask which one.'),
   }, 'A Windline cycling tour\'s route, day by day.'),
@@ -84,6 +94,17 @@ export const OUTPUT_SCHEMAS = {
   }, 'A cycling tour\'s notes for riders, as the organiser wrote them.'),
   plan_route: out(['plan_route'], { ...EVENT_WEATHER, tz: S('The route\'s IANA time zone.'), km: N('The route\'s length in km.'), order: X('Several files: how the days were ordered (numbers, map or upload).'), order_note: X('When the file numbers and the map disagree: what was chosen.'), files: X('Several files: the file of each day, in order.'), flyover: B('The map flies over the route in the chat.'), fly_3d: X('A link to the full 3D flight, only for a route with a public page; else null.') }, 'The weather along a route at the time you\'d ride or run it.'),
 };
+// find_clubs, find_events (discover.js): clubs, organisers and their public events near a place
+const NEAR = { add_club: X('Where a club that isn\'t listed asks to be added: { cycling (Windline\'s page application), running (RunFast\'s Add your club) }.'), place: S('The place searched, as found on the map.'), km: N('The radius searched, in km.'), sport: SN('The sport asked for, or null for all.'), app: S('windline, or runfast when every row is a running club or event.'), units: { type: 'string', enum: ['metric', 'imperial'] } };
+Object.assign(OUTPUT_SCHEMAS, {
+  find_clubs: out(['clubs'], { ...NEAR, beginners: B('Only beginner-friendly clubs.'),
+    clubs: A('Nearest first: id, app, name, kind (club or organiser), url (its page), join (Join: the page, sign-in in the same step), photo, km, area, sports, sessions (one line), beginners_welcome, pace_groups, who_for, next ({ start, place, kind, weather, weather_basis: forecast or typical }).') },
+  'Clubs and organisers near a place, nearest first.'),
+
+  find_events: out(['events'], { ...NEAR, when: X('The window searched: { from, to } (YYYY-MM-DD), or null for the next four months.'),
+    events: A('Soonest first: id, app, name, kind (ride, run, race, tour), url (its page), join (I\'m in), photo, km, start (ISO), area, club, sports, beginners_welcome, weather, weather_basis.') },
+  'Public rides, runs, races and tours near a place, soonest first.'),
+});
 const WRITE = (views, description) => out(views, {
   app: SN('The account\'s app: windline or runfast.'),
   events: X('list_my_events: each event with id, name, status (draft or published), dates, km, finished, and its dashboard and public links.'),

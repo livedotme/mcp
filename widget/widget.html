@@ -113,7 +113,34 @@ ul.rows{list-style:none;margin:0;padding:0 8px 8px;max-height:340px;overflow:aut
 .hint{color:var(--muted);font-size:13px;padding:6px 18px 14px;margin:0}
 .tag{display:inline-block;font:600 11px/1 var(--font);padding:3px 6px;border-radius:6px;background:var(--live-wash);color:var(--live-ink);margin-left:6px;vertical-align:1px}
 .empty{padding:28px 18px;color:var(--muted);text-align:center}
+/* find_clubs, find_events: a list of clubs or events, each with Join (or I'm in) to its page */
+ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.near li{display:flex;align-items:flex-start;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line)}.near li:last-child{border-bottom:0}
+.near .av{border-radius:10px;background:var(--soft);color:var(--muted)}.near .av img{border-radius:10px;object-fit:contain;background:#fff}
+.near .mid{min-width:0;flex:1}
+.near .nm{all:unset;cursor:pointer;display:block;font:600 15px/1.25 var(--font);color:var(--ink)}.near .nm:hover{text-decoration:underline}.near .nm:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.near .sub{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.near .ln{display:block;color:var(--body);font-size:13.5px;margin-top:4px}
+.near .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.near .tags span{font:600 11.5px/1 var(--font);padding:4px 7px;border-radius:6px;background:var(--soft);color:var(--body)}.near .tags .yes{background:var(--live-wash);color:var(--live-ink)}
+.near .nx{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;color:var(--body)}.near .nx i{width:7px;height:7px;border-radius:50%;flex:none;background:var(--faint)}.near .nx i.forecast{background:var(--live)}.near .nx i.typical{background:var(--warn)}
+.near .go{flex:none;height:34px;padding:0 14px;margin-top:2px;font-size:13.5px}
+.near .run .av{color:var(--run-ink)}
 .skel{height:300px;display:grid;place-items:center;color:var(--muted);font-size:13px}
+/* a club in a race: the club's mark, its people as a grid of faces (tap one for their card) */
+.cmark{width:40px;height:40px;flex:none;border-radius:11px;display:grid;place-items:center;font:800 14px/1 var(--font);letter-spacing:-.02em;position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+:root[data-theme="dark"] .cmark{box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.cmark img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#fff}
+.team{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px;padding:0 10px 12px}
+.mem{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;padding:12px 6px 10px;border-radius:12px;min-width:0}
+.mem:hover{background:var(--hover)}.mem:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}.mem.busy{opacity:.55;pointer-events:none}
+.mem .av{width:52px;height:52px;font-size:16px;margin-bottom:4px;box-shadow:0 0 0 2px var(--paper),0 0 0 3.5px var(--ring,transparent)}
+.mem.live .av{--ring:var(--live)}
+.mem b{display:block;max-width:100%;font:600 13.5px/1.2 var(--font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mem .ln{display:block;max-width:100%;color:var(--muted);font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mem .km{display:block;font:600 12px/1.3 var(--font);color:var(--body);margin-top:2px}.mem .km .g{color:var(--live-ink)}.mem .km .w{color:var(--warn-ink)}
+.sec .cnt{float:right;color:var(--faint);font-weight:600}
+.cttl span{white-space:normal}
+.clubmap .pdot{width:13px;height:13px;border-width:2.5px}.clubmap .pdot.lead{width:17px;height:17px}
 @media (prefers-reduced-motion:reduce){.dot,.pill.live i{animation:none}}
 @media (max-width:420px){.map{height:240px}.ttl b{font-size:16px}.stat{padding:10px 12px}}
 </style>
@@ -203,7 +230,15 @@ function draw(v) {
   document.body.className = (v.sport === 'run' || v.sport === 'running' ? 'run ' : '') + 'app-' + (v.app === 'runfast' || (!v.app && /^run/.test(String(v.sport || ''))) ? 'runfast' : 'windline');
   stopLive();
   if (v.kind === 'picker') return picker(v);
+  if (v.kind === 'none') return noneView(v);
+  if (v.kind === 'club') return clubView(v);
+  if (v.kind === 'list') return nearList(v);
   return mapView(v);
+}
+/** Nothing to draw (no match, several to choose from, a question back): the answer's own words, and nothing loading. */
+function noneView(v) {
+  root.innerHTML = '<div class="card">' + head('livedot', '', '', STACK.length > 0, null) + '<p class="hint" id="lv-none">' + esc(v.message || 'Nothing to show here.').replace(/\n/g, '<br>') + '</p><span class="sp">' + sponsorHtml(v) + '</span></div>';
+  seps(root); wire(); host.size();
 }
 function head(title, sub, pill, back, photo) {
   return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : '') + (photo != null ? avatarOf(title, photo) : back ? '' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
@@ -252,6 +287,42 @@ function leadersHtml(v) {
   return v.leaders && v.leaders.length ? '<div class="sec"><h3>Out front</h3></div><ul class="rows">' + v.leaders.map(function (l, i) { return '<li><div class="row" style="cursor:default">' + (l.photo ? avatarOf(l.k, l.photo) : '<span class="av num">' + (i + 1) + '</span>') + '<span class="mid"><b>' + (l.photo ? (i + 1) + ' · ' : '') + esc(l.k) + '</b><span class="sub num">' + esc(l.v) + '</span></span></div></li>'; }).join('') + '</ul>' : '';
 }
 
+
+// ---------------------------------------------------------------- a club in a race (Wes, 17 Oct: "a picture of all their people, and clicking one shows that person")
+function clubMark(c, v) {
+  var bg = (c && c.colour) || (v.app === 'runfast' ? '#0E1B26' : '#0A2540'), fg = (c && c.accent) || '#fff';
+  var logo = c && c.logo && /^https:\/\/(windline\.tech|runfast\.tech|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(c.logo) ? '<img src="' + esc(c.logo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '';
+  return '<span class="cmark" style="background:' + esc(bg) + ';color:' + esc(fg) + '" aria-hidden="true">' + esc((c && c.initials) || initialsOf(v.name)) + logo + '</span>';
+}
+function teamHtml(v) {
+  return (v.members || []).map(function (m) {
+    var nm = String(m.name || ''), sp = nm.indexOf(' '), first = sp > 0 ? nm.slice(0, sp) : nm, last = sp > 0 ? nm.slice(sp + 1) : '';
+    var sub = esc(m.sub || '').replace(/ · ([+−])([\d:]+)/, function (x, sg, t) { return ' · <span class="' + (sg === '+' ? 'w' : 'g') + '">' + sg + t + '</span>'; }).replace(/ · On pace/, ' · <span class="g">On pace</span>');
+    return '<button type="button" class="mem' + (/^(live|delayed)$/.test(m.status) ? ' live' : '') + '" data-pid="' + esc(m.id) + '" aria-label="' + esc(nm + ', ' + (m.sub || '')) + '">' + avatarOf(nm, m.photo, v.sport === 'run' ? 'var(--run)' : 'var(--cyc)')
+      + '<b>' + esc(first) + '</b><span class="ln">' + esc(last || ' ') + '</span><span class="km num">' + sub + '</span></button>';
+  }).join('');
+}
+function clubView(v) {
+  var back = STACK.length > 0;
+  var h = '<div class="card">' + brandBar(v) + '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back">' + BACK + '</button>' : '') + clubMark(v.club, v)
+    + '<div class="ttl cttl"><b>' + esc(v.name) + '</b><span id="lv-sub">' + esc(v.subtitle || '') + '</span></div>' + pillOf(v) + '</div>';
+  h += '<div class="map clubmap" id="map"><svg id="svg" aria-hidden="true"></svg><div id="gl"></div>' + (v.headline ? '<div class="headline num" id="lv-head">' + headHtml(v) + '</div>' : '') + '</div>';
+  if (v.stats && v.stats.length) h += '<div class="stats" id="lv-stats">' + statsHtml(v) + '</div>';
+  h += '<div class="sec"><h3>' + (v.sport === 'run' ? 'Our runners' : 'Our riders') + '<span class="cnt">Tap one to see them</span></h3></div><div class="team" id="lv-team">' + teamHtml(v) + '</div>';
+  h += '<div class="ft">' + (v.tap ? '<button class="btn tapbtn appbtn" type="button" id="tap">' + esc(v.tap.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.tap ? ' sec2' : ' appbtn') + '" type="button" id="follow" data-open="' + esc(v.follow.url) + '">' + (v.tap ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta" id="lv-meta">' + metaHtml(v) + '</span></div>';
+  if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>';
+  h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
+  root.innerHTML = h; seps(root); wire(); wireTeam(); drawSvg(v); drawGl(v, seq); host.size(); startLive(v);
+}
+function wireTeam() {
+  var box = document.getElementById('lv-team'); if (!box) return;
+  box.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-pid]'); if (!b || !V || V.kind !== 'club') return; b.classList.add('busy'); var from = V;
+    host.call('where_is', { person: b.getAttribute('data-pid'), units: V.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; b.classList.remove('busy'); if (nv && V === from) { STACK.push(from); show(nv); } })
+      .catch(function () { b.classList.remove('busy'); var p = b.getAttribute('aria-label') || ''; host.message('Where is ' + p.split(',')[0] + '?').catch(function () { /* */ }); });
+  });
+}
+
 // ---------------------------------------------------------------- live: the card keeps itself up to date (Wes, 17 Oct: "is this actually live?")
 // While a person's card or a race map is on screen and the tab is visible: the same tool again every 30 s (one call, never more), for
 // 30 minutes at most, until they finish. The numbers, the dot and the road ahead change in place; the map moves only if the dot leaves it.
@@ -278,6 +349,7 @@ function swap(id, html) { var el = document.getElementById(id); if (el) { el.inn
 function updateLive(nv) {
   var keepTap = V && V.tap; V = nv; if (keepTap && !nv.tap) V.tap = null;
   swap('lv-stats', statsHtml(nv)); swap('lv-ahead', aheadHtml(nv)); swap('lv-leaders', leadersHtml(nv)); swap('lv-head', headHtml(nv)); wireImgs(document.getElementById('lv-leaders'));
+  if (nv.kind === 'club') { swap('lv-team', teamHtml(nv)); wireImgs(document.getElementById('lv-team')); var sub = document.getElementById('lv-sub'); if (sub) sub.textContent = nv.subtitle || ''; }
   var meta = document.getElementById('lv-meta'); if (meta) { meta.innerHTML = metaHtml(nv); wireOpen(meta); }
   var pill = root.querySelector('.hd .pill'); if (pill) pill.outerHTML = pillOf(nv);
   wireOpen(document.getElementById('lv-ahead'));
@@ -303,10 +375,25 @@ function picker(v) {
   q.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return; e.preventDefault(); var s = q.value.trim(); if (!s) return;
     var box = document.getElementById('rows'); box.innerHTML = '<li class="empty">Searching…</li>';
-    host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; if (nv && nv.kind === 'picker') show(nv); else if (nv) { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
+    host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; if (nv && nv.kind === 'picker') show(nv); else if (nv && nv.kind !== 'none') { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
       .catch(function () { box.innerHTML = '<li class="empty">That didn’t load. Try again.</li>'; });
   });
   host.size();
+}
+/** find_clubs, find_events: the clubs or events near a place. The name opens its page; Join (or I'm in) opens it with sign-in. */
+function nearList(v) {
+  var h = '<div class="card">' + head(v.title, v.subtitle, '');
+  h += '<ul class="near">' + v.items.map(function (x) {
+    return '<li class="' + (x.app === 'runfast' ? 'run' : '') + '">' + avatarOf(x.name, x.photo, null) + '<span class="mid"><button type="button" class="nm" data-open="' + esc(x.url) + '">' + esc(x.name) + '</button>'
+      + '<span class="sub">' + esc(x.sub) + '</span>' + (x.line ? '<span class="ln">' + esc(x.line) + '</span>' : '')
+      + (x.tags && x.tags.length ? '<span class="tags">' + x.tags.map(function (t) { return '<span' + (/^Beginners/.test(t) ? ' class="yes"' : '') + '>' + esc(t) + '</span>'; }).join('') + '</span>' : '')
+      + (x.next ? '<span class="nx"><i class="' + esc(x.weather || '') + '"></i>' + esc(x.next) + '</span>' : '') + '</span>'
+      + '<button type="button" class="btn go" data-open="' + esc(x.button.url) + '">' + esc(x.button.label) + '</button></li>';
+  }).join('') + '</ul>';
+  h += '<div class="ft">' + (v.add ? '<button type="button" class="btn sec2" data-open="' + esc(v.add.url) + '">' + esc(v.add.label) + '</button>' : '') + '<span class="meta">' + (v.list === 'events' ? 'Weather: the forecast within 10 days, typical beyond.' : 'What each club chose to share on its page.') + (v.updated ? ' ' + metaHtml(v) : '') + '</span></div>';
+  if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>'; // only without a sign-in: a free account, one line
+  h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
+  root.innerHTML = h; seps(root); wire(); host.size();
 }
 function rows(list) {
   var box = document.getElementById('rows');
@@ -324,19 +411,19 @@ function rows(list) {
 var TAP_AT = {};
 function wireTap() {
   var b = document.getElementById('tap'), t = V && V.tap; if (!b || !t) return;
-  var wait = function (ms) { b.disabled = true; b.textContent = 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
-  var since = Date.now() - (TAP_AT[t.person] || 0); if (since < 60e3) wait(60e3 - since);
+  var wait = function (ms, n) { b.disabled = true; b.textContent = n ? 'Taps sent ✓ (' + n + ')' : t.club ? 'Taps sent ✓' : 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
+  var key = t.tour || t.club || t.person, since = Date.now() - (TAP_AT[key] || 0); if (since < 60e3) wait(60e3 - since);
   b.addEventListener('click', function () {
     if (b.disabled) return; b.disabled = true; b.textContent = 'Sending…';
     var old = b.parentNode.querySelector('.tapwhy'); if (old) old.remove();
     var say = function (msg) { var p = document.createElement('p'); p.className = 'tapwhy'; p.textContent = msg; b.parentNode.appendChild(p); host.size(); };
-    host.call('tap_on_the_back', { person: t.person }).then(function (r) {
+    host.call('tap_on_the_back', t.tour ? { tour: t.tour } : t.club ? { club: t.club, event: t.event } : { person: t.person }).then(function (r) {
       var sc = r && r.structuredContent;
-      if (sc && sc.sent) { TAP_AT[t.person] = Date.now(); wait(60e3); return; }
+      if (sc && sc.sent) { TAP_AT[key] = Date.now(); wait(60e3, sc.taps_sent || 0); return; }
       b.disabled = false; b.textContent = t.label; say((sc && (sc.message || sc.error)) || 'The tap didn’t go through. Try again in a moment.');
     }).catch(function () {
-      host.message((t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[t.person] = Date.now(); wait(60e3); })
-        .catch(function () { b.disabled = false; b.textContent = t.label; say('Ask in the chat: “Give ' + t.first + ' a tap on the back”.'); });
+      host.message(t.tour ? 'Give the tour a tap on the back' : t.club ? 'Give the team a tap on the back' : (t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[key] = Date.now(); wait(60e3); })
+        .catch(function () { b.disabled = false; b.textContent = t.label; say(t.tour ? 'Ask in the chat: “Give the tour a tap on the back”.' : t.club ? 'Ask in the chat: “Give the team a tap on the back”.' : 'Ask in the chat: “Give ' + t.first + ' a tap on the back”.'); });
     });
   });
 }

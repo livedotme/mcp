@@ -3,7 +3,7 @@
 // text everywhere else. handle(request, env) is the whole server; functions/mcp.js serves it at livedot.me/mcp.
 import { reads } from './reads.js';
 import { unitsFor } from './words.js';
-import { findPerson, whereIs, eventStatus, eventWeatherTool, flyRouteTool, tourRouteTool, tourNotesTool, tapOnTheBack } from './tools.js';
+import { findPerson, whereIs, eventStatus, eventWeatherTool, flyRouteTool, tourRouteTool, tourNotesTool, tapOnTheBack, clubInRace } from './tools.js';
 import { WIDGET_HTML } from './gen/widget.js';
 import { WL_VERSION } from './gen/engine.js';
 import { landing } from './landing.js';
@@ -13,6 +13,7 @@ import { ago } from './words.js';
 import { OUTPUT_SCHEMAS, promptList, promptGet } from './schemas.js';
 import { BUILD } from './gen/build.js';
 import { parseLink } from './tools.js';
+import { discoverTools, findClubs, findEvents } from './discover.js'; // find_clubs, find_events: clubs and events near a place
 
 export const VERSION = '1.0.0';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -82,12 +83,31 @@ export const TOOLS = [
       + 'For "How\'s the Comrades going?" or "Who\'s leading the Coast Classic?". If several races match it lists them: ask the user which one. Try "Comrades demo" or "Coast Classic demo" to see it work any time.',
     inputSchema: {
       type: 'object',
-      properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, units: UNITS },
+      properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, club: { type: 'string', description: 'A club or team, if the user asked about one in this race (as club_in_race).' }, units: UNITS },
       required: ['event'],
       additionalProperties: false,
     },
     annotations: { title: 'How a live race is going', ...READ_ONLY },
     _meta: uiMeta('Reading the race…', 'Live'),
+  },
+  {
+    name: 'club_in_race',
+    title: 'How a club is doing in a race',
+    description: 'How a club or team is doing in a live race: "How is the UCT team doing in the Comrades?", "How are Coast Riders doing in the Coast Classic?". '
+      + 'Finds the club by its name or its page address (windline.tech/c/<club>, runfast.tech/c/<club>) and shows its people on the club\'s live map in that race: each one\'s km, time against their goal or finish time, and a map with just the club\'s dots. Tapping a person opens their live card. '
+      + 'Only what the club\'s public live map shows: members who chose to be findable, never a private run, never a position near the start or finish. If several clubs match it lists them: ask which one. Try "the demo club in the Comrades" or "Coast Riders in the Coast Classic" any time.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        club: { type: 'string', description: 'The club or team as the user said it ("UCT", "the UCT team", "Coast Riders"), or its page address (runfast.tech/c/uct).' },
+        event: { type: 'string', description: 'The race, if named: "Comrades", "Coast Classic".' },
+        units: UNITS,
+      },
+      required: ['club'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'How a club is doing in a race', ...READ_ONLY },
+    _meta: uiMeta('Finding the team on the course…', 'Live'),
   },
   {
     name: 'event_weather',
@@ -123,10 +143,10 @@ export const TOOLS = [
   {
     name: 'tour_route',
     title: 'A cycling tour\'s route',
-    description: 'A Windline cycling tour\'s route, day by day: "What\'s the Durban Tour 2027 route?", "Give me the GPX files for Alistair\'s tour". '
+    description: 'A Windline cycling tour\'s route, day by day: "What\'s the Durban Tour 2027 route?", "Give me the GPX files for Alistair\'s tour", "Where is Alistair\'s Durban tour?". On the tour\'s days its card offers a tap on the back for the organiser (tap_on_the_back with tour). To fly over day 3 of a tour ("Give me the flyover for day 3 of TSF 2026"), pass day: 3. '
       + 'Finds a published tour by its name, its address or its organiser\'s or club\'s name, and returns each day (from and to, distance, climbing, start time), a map of every day, and the weather (the live forecast within 10 days, 10 years of weather on the date beyond). '
       + 'Route files (GPX, Garmin .fit) only when the organiser lets riders download them; otherwise say "The organiser hasn\'t made the route files available." Never make up a file link. If several tours match, ask which.',
-    inputSchema: { type: 'object', properties: { tour: { type: 'string', description: 'The tour\'s name, address or organiser, e.g. "ProLend 2027 Durban Tour", "AllyCat".' }, units: UNITS }, required: ['tour'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { tour: { type: 'string', description: 'The tour\'s name, address or organiser, e.g. "ProLend 2027 Durban Tour", "AllyCat".' }, day: { type: 'integer', minimum: 1, description: 'One day of the tour to fly over (1 for day 1), when the user asks for a day: the flyover of that day and its Fly it in 3D link.' }, units: UNITS }, required: ['tour'], additionalProperties: false },
     annotations: { title: 'A cycling tour\'s route', ...READ_ONLY },
     _meta: uiMeta('Reading the tour…', 'Tour ready'),
   },
@@ -143,6 +163,8 @@ export const TOOLS = [
     title: 'Give someone a tap on the back',
     description: 'Send someone in a live race a tap on the back: it buzzes on their phone, with your name if you\'re signed in (or the first name you give). In the day after their finish it lands as a congratulation. '
       + 'Only when the user asks to give them a tap on the back (or to cheer them on, say well done): never on your own, and one per ask. Use the person id from find_person, or a livedot handle or follow link. '
+      + 'For a cycling tour ("Give the Durban tour a tap on the back"), pass tour: the tap goes to its organiser, on the tour\'s days. '
+      + 'For a club or team in a race ("Give the UCT team a tap on the back"), pass club (and event): one tap to each member on the club\'s live map who takes taps; it says how many went. '
       + 'It keeps the person\'s own settings and the follow page\'s rules: if they turned taps off, aren\'t live, or only take taps from people with their link, it says so; tell the user plainly. Returns the live map too.',
     inputSchema: {
       type: 'object',
@@ -150,6 +172,9 @@ export const TOOLS = [
         person: { type: 'string', description: 'A person id from find_person, e.g. "runfast:p:pdemo00megan" or "h:megan".' },
         handle: { type: 'string', description: 'A livedot handle ("megan") or link (livedot.me/megan).' },
         code: { type: 'string', description: 'A follow link or its code (windline.tech/f/<code>, runfast.tech/f/<code>).' },
+        tour: { type: 'string', description: 'A Windline tour, by its name, address or organiser ("Alistair\'s Durban tour"): the tap goes to the tour\'s organiser, who reads them out at night.' },
+        club: { type: 'string', description: 'A club or team, by its name or page address, or the club id a club card gave ("runfast:demo"): one tap to each of its members on the map.' },
+        event: { type: 'string', description: 'With club: the race they are in, if named.' },
         name: { type: 'string', description: 'The first name the user wants on the tap ("Sam"), if they gave one. A signed-in user\'s tap shows their own public name instead.' },
         units: UNITS,
       },
@@ -160,6 +185,7 @@ export const TOOLS = [
   },
 ];
 
+TOOLS.push(...discoverTools({ READ_ONLY, uiMeta })); // find_clubs, find_events (discover.js)
 // Read tools need no account; the write tools sign in (OAuth 2.1, writes.js). ChatGPT reads securitySchemes per tool.
 TOOLS.forEach((t) => { t.securitySchemes = t.name === 'tap_on_the_back' ? [{ type: 'noauth' }, { type: 'oauth2', scopes: [] }] : [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; }); // a tap: anyone; signed in, it carries your name
 TOOLS.push(...WRITE_TOOLS);
@@ -175,7 +201,7 @@ const RESOURCE = {
 };
 // The widget reads only these: MapLibre from unpkg, OpenFreeMap's light (positron) basemap, the open terrain tiles the flyover's hills
 // come from (AWS Terrain Tiles, as RunFast's Fly), livedot's typeface. Never a per-tile map key.
-const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://windline.tech', 'https://runfast.tech', 'https://weatherkit.apple.com'] }; // the apps' own hosts (people's profile pictures); Apple's Weather mark, as Apple supplies it
+const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://windline.tech', 'https://runfast.tech', 'https://weatherkit.apple.com', 'https://firebasestorage.googleapis.com', 'https://storage.googleapis.com'] }; // the apps' own hosts (people's profile pictures) and their storage (club logos); Apple's Weather mark, as Apple supplies it
 const RESOURCE_META = {
   ui: { csp: CSP, prefersBorder: true },
   'openai/widgetCSP': { connect_domains: CSP.connectDomains, resource_domains: CSP.resourceDomains },
@@ -184,7 +210,7 @@ const RESOURCE_META = {
 };
 
 const INSTRUCTIONS = 'livedot answers where people are in live cycling (Windline) and running (RunFast) races, with the weather where they are from Windline\'s forecast engine. '
-  + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours. When a name matches several people, ask one short question and never guess. '
+  + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; club_in_race for how a club or team is doing in one; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours; find_clubs for running and cycling clubs near a place, find_events for rides, runs, races and tours near a place and when. When a name matches several people, ask one short question and never guess. '
   + 'Only public data: findable people on public races. plan_route needs no account. Organisers and club admins can sign in with their Windline or RunFast account (OAuth) to list, create and change their own events: new events are drafts, nothing is published without the user confirming, and finished events never change.';
 
 export const DESCRIPTION = 'Live race tracking in the chat: where someone is in a live cycling or running race, the weather on the course from Windline\'s forecast engine, race-day forecasts and a flyover of the course, with a live map. Free.';
@@ -202,7 +228,9 @@ ${DESCRIPTION}
 - A livedot handle (@megan, livedot.me/megan), a follow link or a person id: where_is.
 - Give someone a tap on the back (only when the user asks): tap_on_the_back. It buzzes on their phone; in the day after their finish it's a congratulation.
 - How a race is going, who's leading: event_status.
+- How a club or team is doing in a race ("How's the UCT team doing in the Comrades?"): club_in_race. Its card shows each member; tap one for their card.
 - The weather for an event: event_weather. Fly over a course: fly_route.
+- A club to join near a place ("best running club to join in Fourways", "beginner cycling group near Sandton"): find_clubs. Rides, runs, races and tours near a place and when ("trail runs near Cape Town in November", "cycle tours around Johannesburg"): find_events. Clubs and organisers only, never a person; Join (or I'm in) opens their page.
 - A Windline cycling tour's days and route files: tour_route; the organiser's notes for riders: tour_notes (beta).
 - The weather along your own route (a GPX file or a Ride with GPS link): plan_route.
 - Organisers and club admins, signed in (OAuth): list_my_events, create_event, update_event, add_tour_notes, publish_event, post_club_ride. New events are drafts; nothing is published without the user's yes.
@@ -211,7 +239,7 @@ ${DESCRIPTION}
 - Who it's for: if they run a club or organiser page (list_my_events) and didn't say, ask once: a private ride or run for them (create_event, visibility private), or the club's (post_club_ride).
 
 ## Try it any time
-"Comrades demo" (running) and "Coast Classic demo" (cycling) are demo races that are live all day: event_status "Coast Classic demo", event_weather "Comrades demo", fly_route "Comrades demo".
+"Comrades demo" (running) and "Coast Classic demo" (cycling) are demo races that are live all day: event_status "Coast Classic demo", event_weather "Comrades demo", fly_route "Comrades demo", club_in_race "the demo club" in the Comrades or "Coast Riders" in the Coast Classic.
 
 ## Privacy
 Only public data: people who chose to be findable, on public races. Positions near the start and finish, and of anyone paused or stopped, are never shared. No account is needed to ask.
@@ -234,7 +262,7 @@ const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id
 
 // The free paths (no sign-in): one line to a free account in the app that fits the sport, before the sponsor line, measured by ?ref=mcp.
 // Never on a signed-in answer, never on an answer with nothing in it.
-const FREE = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'tap_on_the_back']);
+const FREE = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'tap_on_the_back', 'find_clubs', 'find_events']);
 export const SIGNUP = {
   windline: { label: 'Plan it in Windline, free: create your account', url: 'https://app.windline.tech/?ref=mcp#/signup' },
   runfast: { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' },
@@ -254,11 +282,11 @@ async function sha256hex(s) { const d = await crypto.subtle.digest('SHA-256', ne
 // the proxy secret; mcpMisses, 14 days), for HQ's "livedot misses". What it holds: the tool, what was asked and the event (80 characters
 // each, a follow link's code never), the outcome, the counts, which app servers were asked and how they answered, the time, this build.
 // Never an address, an account, the assistant's user id, a token. Sent after the answer (waitUntil), and never in the way of one.
-const MISS_TOOLS = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back']);
+const MISS_TOOLS = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events']);
 const cap80 = (s) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 /** What was asked, as typed, but never a follow link's code (it lets its holder tap): those become "[follow link]". */
 function askedOf(a) {
-  const raw = a.name_or_handle || a.handle || a.person || a.event_or_route || a.tour || a.event || (a.code || a.link ? '[follow link]' : '');
+  const raw = a.name_or_handle || a.handle || a.person || a.event_or_route || a.tour || a.event || a.place || (a.code || a.link ? '[follow link]' : '');
   const s = String(raw || ''), L = parseLink(s);
   if (L && L.code) return '[follow link]';
   if (/^(windline|runfast):f:/.test(s)) return s.replace(/:f:.*/, ':f:[follow link]');
@@ -286,11 +314,12 @@ function linkSponsor(text, sp) { const t = String(text || ''), k = `free thanks 
 
 async function call(name, args, meta, env, rq = {}) {
   const trace = [], R = reads(env, trace), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
-  const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool, tap_on_the_back: tapOnTheBack }[name];
+  const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, club_in_race: clubInRace, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool, tap_on_the_back: tapOnTheBack }[name];
   let out;
   try {
     if (fn) out = await fn(ctx, args || {});
     else if (name === 'plan_route') out = await planRoute(ctx, args || {}, await sponsorLineFor(R));
+    else if (name === 'find_clubs' || name === 'find_events') out = await (name === 'find_clubs' ? findClubs : findEvents)(ctx, args || {}, await sponsorLineFor(R));
     else if (SCOPE[name]) out = await writeTool(ctx, name, args || {}, await sponsorLineFor(R));
     else return null;
   } catch (e) {
@@ -299,7 +328,7 @@ async function call(name, args, meta, env, rq = {}) {
     if (MISS_TOOLS.has(name)) noteMiss(env, rq, name, args, null, trace, 'error');
     throw e;
   }
-  if (MISS_TOOLS.has(name)) noteMiss(env, rq, name, args, out, trace);
+  if (MISS_TOOLS.has(name)) noteMiss(env, rq, name, args, out, trace, out && out.miss); // find_clubs/find_events: a place not on the map is a miss too
   // whose weather it is (WeatherKit's terms: the Apple Weather mark and its legal page wherever Apple's data shows; ERA5 history credits
   // Copernicus), and when it was fetched; and the sponsor's name as a link (Wes, 17 Oct)
   const sp = await sponsorInfo(R), line = await sponsorLineFor(R), Sx = out.structured || {};
@@ -312,6 +341,10 @@ async function call(name, args, meta, env, rq = {}) {
   if (!ctx.authorization && FREE.has(name) && out.structured && out.structured.view !== 'none') signupLine(out, await sponsorLineFor(R));
   const res = { content: [{ type: 'text', text: linkSponsor(out.text, sp) }], structuredContent: { view: 'none', ...(out.structured || {}) } };
   if (out.map) res._meta = { 'livedot/view': out.map };
+  else if (TOOLS.find((t) => t.name === name && t._meta && t._meta['openai/outputTemplate'])) { // nothing to draw (no match, a question back): the card says so, never "Loading…" for ever
+    const said = String(Sx.message || out.text || '').split(line)[0].replace(/\n[^\n]*create your account[^\n]*/g, '').trim();
+    res._meta = { 'livedot/view': { kind: 'none', name: 'livedot', message: said, sponsor: line, sponsorName: sp.name, sponsorUrl: sp.url, units: (args && args.units) || null } };
+  }
   return res;
 }
 

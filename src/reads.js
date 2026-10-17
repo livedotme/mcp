@@ -47,9 +47,15 @@ export function reads(env = {}, trace = null) {
     /** A follow link: { riders | runners: [Live] }. */
     liveByCode: (app, code) => (code === 'demo' ? demo : api)(app, '/live/f/' + e(code)),
     /** Findable people by pid. */
-    liveByPid: (app, pids) => api(app, (app === 'windline' ? '/live/rider?pids=' : '/live/runner?pids=') + pids.map(e).join(',')),
+    liveByPid: (app, pids) => (pids.length && pids.every((x) => /^pdemo/.test(String(x))) ? demo : api)(app, (app === 'windline' ? '/live/rider?pids=' : '/live/runner?pids=') + pids.map(e).join(',')),
     /** Findable people by name, any race (≥ 3 letters, up to 20). */
     find: (app, q) => api(app, '/live/find?q=' + e(q)),
+    /** A club's live map (the club page's Happening now, as anyone sees it: Findable members only): { now, club?, riders | runners: [Live] }. */
+    club: (app, slug) => (slug === 'demo' ? demo : api)(app, '/live/club/' + e(slug)),
+    /** The apps' name search on their own servers, for the demo (whether config/demo.listed is on: the demo people are listed). */
+    demoFind: (app, q) => demo(app, '/live/find?q=' + e(q)),
+    /** Published public Windline tours by the words of their name and of who puts them on (GET /api/event/find): { tours: [{ slug, name, by, url }] }. */
+    tourFind: (q) => api('windline', '/event/find?q=' + e(String(q).slice(0, 120)), 7000, 60),
     /** A race's map: with q, up to 20 matches; without, livedot's copy (the 50 furthest along, the count, the taps). */
     raceMap: (app, id, q) => (isD(id) ? demo : api)(app, '/live/race/' + e(id) + (q ? '?q=' + e(q) : '?for=livedot')),
     /** A race's course: Windline { days: [{ id, points }] }, RunFast { course }. Cached a few minutes at the edge. */
@@ -58,6 +64,8 @@ export function reads(env = {}, trace = null) {
     profile: (app, query) => api(app, '/profile?' + query),
     /** One published event as data, as the tour pages and the app read it: days, start times, paces, points, routeFiles (and notes). */
     event: (type, slug) => api('windline', '/event/' + e(type) + '/' + e(slug), 8000, 60),
+    /** Clubs or events near a point (find_clubs, find_events; contract handoffs/2026-10-17-clubs-near-contract.md): { results: [...] }. */
+    near: (app, what, qs) => api(app, '/' + what + '/near?' + qs, 7000, 300),
     /** Windline's platform sponsor (the line on every livedot surface). */
     sponsor: () => getJson(SITE.windline + '/api/platform-sponsor', 3000, 600),
   };
@@ -70,3 +78,18 @@ export const DEMOS = [
   { app: 'runfast', id: 'comrades-demo', code: 'demo', name: 'Comrades (demo)', words: ['comrades', 'demo'] },
 ];
 export const isDemo = (x) => !!x && (/^pdemo/.test(String(x.pid || '')) || /\(demo\)\s*$/i.test(String(x.name || '')) || x.slug === 'demo');
+
+/** Whether an app lists its demo now (config/demo.listed, App Review's switch, as the app's own name search shows it): while it does,
+ *  its demo race is a live race like any other ("How's the Comrades going?"); off after review, through the switch. Held a minute. */
+const listedMemo = new Map();
+export async function demoListed(R, app) {
+  const c = listedMemo.get(app); if (c && Date.now() - c.at < 60e3) return c.p;
+  const d = DEMOS.find((x) => x.app === app); if (!d) return false;
+  const p = (async () => {
+    const m = await R.raceMap(app, d.id), L = (m.body && (m.body.riders || m.body.runners)) || [], v = L.find((x) => x && x.name);
+    if (!v) return false;
+    const f = await R.demoFind(app, String(v.name).replace(/\s*\(demo\)\s*$/i, ''));
+    return (((f.body && (f.body.riders || f.body.runners)) || [])).some((x) => /^pdemo/.test(String(x.pid || '')));
+  })().catch(() => false);
+  listedMemo.set(app, { at: Date.now(), p }); return p;
+}
