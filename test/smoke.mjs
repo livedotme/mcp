@@ -13,6 +13,11 @@ const fx = spawn(process.execPath, [path.join(DIR, 'fixture-api.mjs')], { env: {
 await new Promise((ok) => fx.stdout.once('data', ok));
 const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `http://localhost:${PORT}/runfast`, MCP_AUTH_API: `http://localhost:${PORT}/windline/api/mcp` }, SHOW = process.argv.includes('--show');
 let n = 0;
+// the towns at a route's ends (Photon, as the dashboard): stubbed here by latitude, so the tests never depend on it
+const TOWNS = [[-34.18, 'Mossel Bay'], [-34.08, 'George'], [-33.98, 'Wilderness'], [-33.88, 'Knysna'], [-33.78, 'Plettenberg Bay'], [-33.68, 'Storms River']];
+const realFetch = globalThis.fetch, PHOTON = [];
+globalThis.fetch = (u, o) => { const s = String(u && u.url || u); if (!s.startsWith('https://photon.komoot.io/')) return realFetch(u, o); const q = new URL(s), lat = +q.searchParams.get('lat'); PHOTON.push(s);
+  const t = TOWNS.reduce((b, x) => (Math.abs(x[0] - lat) < Math.abs(b[0] - lat) ? x : b)); return Promise.resolve(new Response(JSON.stringify({ features: [{ properties: { name: t[1], osm_value: 'town' } }] }), { headers: { 'Content-Type': 'application/json' } })); };
 const postRaw = (body, h = {}) => handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env);
 const post = async (body, h = {}) => { const r = await handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env); return { status: r.status, body: r.status === 202 ? null : await r.json() }; };
 const call = async (name, args, meta) => { const r = await post({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args, ...(meta ? { _meta: meta } : {}) } }); assert.equal(r.status, 200); assert.ok(r.body.result, JSON.stringify(r.body)); const t = r.body.result.content[0].text; if (SHOW) console.log(`\n--- ${name} ${JSON.stringify(args)}${meta ? ' ' + JSON.stringify(meta) : ''}\n${t}`); conforms(name, r.body.result); return r.body.result; };
@@ -20,6 +25,7 @@ const call = async (name, args, meta) => { const r = await post({ jsonrpc: '2.0'
 const TYPE = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
 const fits = (v, t) => [].concat(t).some((x) => x === TYPE(v) || (x === 'number' && TYPE(v) === 'integer'));
 function conforms(name, res) {
+  assert.match(res.content[0].text, SPONSOR, name + ': the answer doesn\'t end with the sponsor line');
   const o = TOOLS.find((x) => x.name === name).outputSchema; if (res.isError) return;
   const s = res.structuredContent; assert.ok(s && TYPE(s) === 'object', name + ': no structuredContent');
   (o.required || []).forEach((k) => assert.ok(k in s, `${name}: ${k} missing`));
@@ -186,6 +192,78 @@ try {
     const r = JSON.stringify(await call('find_person', { name_or_handle: 'Megan', event: 'Comrades' })) + JSON.stringify(await call('event_status', { event: 'Coast Classic' }));
     assert.ok(!/@|"uid"|email|phone/i.test(r.replace(/livedot\.me\/@?/g, '')));
   });
+  // ---- several GPX files → one tour (plantour.js), shared by create_event and plan_route
+  const leg = (k, name) => `<?xml version="1.0"?><gpx version="1.1"><trk>${name ? `<name>${name}</name>` : ''}<trkseg>${Array.from({ length: 30 }, (_, i) => `<trkpt lat="${(-34.18 + k * 0.1 + i * (0.1 / 29)).toFixed(5)}" lon="${(22.1 + k * 0.3 + i * (0.3 / 29)).toFixed(5)}"></trkpt>`).join('')}</trkseg></trk></gpx>`;
+  const AUTH = { Authorization: 'Bearer good-token' };
+  const callAs = async (name, args, h = AUTH) => { const r = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args } }, h); const j = await r.json(); assert.ok(j.result, JSON.stringify(j)); if (!j.result.isError) conforms(name, j.result); return j.result; };
+  const seenCount = async () => (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).length;
+  await test('five files named 1–5, dropped in shuffled: a tour in their numbers’ order, towns from the map, days one after another, a name suggested, nothing made before a yes', async () => {
+    const files = [3, 1, 5, 2, 4].map((k) => ({ name: `${k}.gpx`, gpx: leg(k - 1) })), before = await seenCount();
+    const p = await callAs('create_event', { files, start: '2027-03-06 07:00' }), v = p._meta['livedot/view'], S = p.structuredContent;
+    assert.equal(S.view, 'tour_plan'); assert.equal(S.type, 'tour'); assert.equal(S.order, 'numbers'); assert.equal(S.note, null); assert.equal(await seenCount(), before, 'nothing is made before the yes');
+    assert.deepEqual(S.days.map((d) => d.file), ['1.gpx', '2.gpx', '3.gpx', '4.gpx', '5.gpx']); assert.deepEqual(S.days.map((d) => d.label), ['Day 1', 'Day 2', 'Day 3', 'Day 4', 'Day 5']);
+    assert.equal(S.days[0].from, 'Mossel Bay'); assert.equal(S.days[0].to, 'George'); assert.equal(S.days[4].to, 'Storms River'); assert.equal(S.name, 'Mossel Bay → Storms River, 5 days');
+    assert.deepEqual(S.days.map((d) => d.start), ['2027-03-06T05:00:00.000Z', '2027-03-07T05:00:00.000Z', '2027-03-08T05:00:00.000Z', '2027-03-09T05:00:00.000Z', '2027-03-10T05:00:00.000Z']);
+    assert.match(p.content[0].text, /^Mossel Bay → Storms River, 5 days: \d+ km, \d+ m up, from Sat 6 Mar\. Days in the order of the numbers in the file names\.\nDay 1 · Sat 6 Mar 7:00 · Mossel Bay → George · /);
+    assert.match(p.content[0].text, /Nothing is made yet\. Check this with the user/); assert.equal(S.visibility, 'shared');
+    assert.equal(v.kind, 'draft'); assert.equal(v.statusWord, 'Plan'); assert.equal(v.follow, null); assert.match(v.updated, /^Plan · Not created yet/); assert.equal(v.key.length, 5);
+    assert.ok(PHOTON.every((u) => /lat=-?\d+\.\d{3}&lon=-?\d+\.\d{3}&/.test(u)), 'only the ends, rounded to about 100 m, go to the town lookup');
+    // the yes: the same files, confirm: true → the tour, in that order
+    const c = await callAs('create_event', { files, start: '2027-03-06 07:00', confirm: true, notes: '# What to pack\nA rain jacket.' }), sent = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop().args;
+    assert.equal(sent.type, 'tour'); assert.equal(sent.name, 'Mossel Bay → Storms River, 5 days'); assert.equal(sent.days.length, 5); assert.equal(sent.days[2].from, 'Wilderness'); assert.equal(sent.visibility, 'shared'); assert.equal(sent.notes, '# What to pack\nA rain jacket.');
+    assert.ok(sent.days.every((d, i) => !i || Date.parse(d.start) - Date.parse(sent.days[i - 1].start) === 864e5));
+    const cv = c._meta['livedot/view']; assert.equal(cv.statusWord, 'Draft'); assert.equal(cv.updated, 'Draft · Publish when you’re ready · Tour notes added');
+  });
+  await test('files with no numbers: chained by the map (each day starts where the last ended); rest days skipped; a GPX name shared by the files names the tour', async () => {
+    const files = [2, 0, 3, 1].map((k) => ({ name: `route-${'abcd'[k]}.gpx`, gpx: leg(k, `Garden Route Classic - ${['Coast', 'Lakes', 'Forest', 'River'][k]}`) }));
+    const p = await callAs('create_event', { files, start: '2027-03-06 07:00', rest_days: ['2027-03-08'] }), S = p.structuredContent;
+    assert.equal(S.order, 'map'); assert.deepEqual(S.days.map((d) => d.file), ['route-a.gpx', 'route-b.gpx', 'route-c.gpx', 'route-d.gpx']); assert.match(p.content[0].text, /Days by the map: each day starts where the one before ended\./);
+    assert.deepEqual(S.days.map((d) => d.start.slice(0, 10)), ['2027-03-06', '2027-03-07', '2027-03-09', '2027-03-10']); assert.equal(S.name, 'Garden Route Classic');
+    const far = [0, 2].map((k) => ({ name: `x${'ab'[k / 2]}.gpx`, gpx: leg(k * 4) })); // two days nowhere near each other, no numbers: as they came
+    assert.equal((await callAs('create_event', { files: far, start: '2027-03-06 07:00' })).structuredContent.order, 'upload');
+  });
+  await test('numbers and the map disagree: one line says so, the numbers win, the map’s order shown', async () => {
+    const files = [{ name: 'day-1.gpx', gpx: leg(0) }, { name: 'day-2.gpx', gpx: leg(2) }, { name: 'day-3.gpx', gpx: leg(1) }];
+    const p = await callAs('create_event', { files, start: '2027-03-06 07:00' }), S = p.structuredContent;
+    assert.equal(S.order, 'numbers'); assert.deepEqual(S.days.map((d) => d.file), ['day-1.gpx', 'day-2.gpx', 'day-3.gpx']);
+    assert.match(S.note, /^The file numbers and the map disagree \(by number, day 2 starts \d+ km from where day 1 ends\); I kept the numbers’ order\. By the map it would be day-1\.gpx, day-3\.gpx, day-2\.gpx\.$/); assert.ok(p.content[0].text.includes(S.note));
+  });
+  await test('plan_route with several files: the same tour, with its weather', async () => {
+    const files = [2, 1].map((k) => ({ name: `Stage ${k}.gpx`, gpx: leg(k - 1) })), d = new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10);
+    const r = await callAs('plan_route', { files, start: `${d} 07:00` }, {}), S = r.structuredContent;
+    assert.equal(S.view, 'plan_route'); assert.equal(S.order, 'numbers'); assert.deepEqual(S.files, ['Stage 1.gpx', 'Stage 2.gpx']); assert.equal(S.days.length, 2); assert.match(r.content[0].text, /^2 days, in the order of the numbers in the file names\./);
+  });
+  await test('a file that isn’t a route: named, with why; a ride can’t have five files; the time is asked for', async () => {
+    const e = await callAs('create_event', { files: [{ name: '1.gpx', gpx: leg(0) }, { name: 'notes.docx', gpx: 'PK\u0003\u0004 not a gpx' }], start: '2027-03-06 07:00' });
+    assert.equal(e.isError, true); assert.match(e.content[0].text, /^notes\.docx isn’t a GPX file\. Fix it or leave it out, then try again\./); assert.match(e.content[0].text, SPONSOR);
+    const t = await callAs('create_event', { type: 'ride', files: [{ name: '1.gpx', gpx: leg(0) }, { name: '2.gpx', gpx: leg(1) }], start: '2027-03-06 07:00' }); assert.equal(t.isError, true); assert.match(t.content[0].text, /A ride has one route/);
+    const q = await callAs('create_event', { files: [{ name: '1.gpx', gpx: leg(0) }, { name: '2.gpx', gpx: leg(1) }], start: '2027-03-06' }); assert.equal(q.isError, true); assert.match(q.content[0].text, /What time does each day start\?/);
+    const big = await callAs('create_event', { files: [{ name: '1.gpx', gpx: leg(0) }, { name: '2.gpx', gpx: leg(1) }], start: '2027-03-06 07:00', notes: 'x'.repeat(10001) }); assert.equal(big.isError, true); assert.match(big.content[0].text, /up to 10,000 characters/);
+  });
+  await test('who it’s for: a personal ride is private by default (the card says so); a tour or a page’s is shared; private on a page is refused', async () => {
+    const p = await callAs('create_event', { name: 'Hill repeats', days: [{ gpx: leg(0), start: '2027-03-06 05:30' }] }), sent = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop().args;
+    assert.equal(sent.type, 'ride'); assert.equal(sent.visibility, 'private'); const v = p._meta['livedot/view'];
+    assert.equal(v.statusWord, 'Private'); assert.equal(v.updated, 'Private · only you (and anyone with your private link)');
+    await callAs('create_event', { name: 'Club tour', type: 'tour', page: 'acme-cc', days: [{ gpx: leg(0), start: '2027-03-06 05:30' }] }); assert.equal((await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop().args.visibility, 'shared');
+    const x = await callAs('create_event', { name: 'x', visibility: 'private', page: 'acme-cc', days: [{ gpx: leg(0), start: '2027-03-06 05:30' }] }); assert.equal(x.isError, true); assert.match(x.content[0].text, /on no page/);
+    await callAs('post_club_ride', { page: 'acme-cc', name: 'Sat', gpx: leg(0), start: '2027-03-06 06:30' }); assert.equal((await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop().args.visibility, 'shared');
+    const t = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools, ce = t.find((y) => y.name === 'create_event'), pc = t.find((y) => y.name === 'post_club_ride');
+    for (const d of [ce.description, pc.description]) assert.match(d, /ask one short question first: is this a private ride or run for you, or a group ride or run for <club name>\?/);
+    assert.deepEqual(ce.inputSchema.properties.visibility.enum, ['private', 'shared']); assert.match(t.find((y) => y.name === 'list_my_events').description, /club and organiser pages they run/);
+  });
+  await test('the free paths end with a free-account line for the sport (?ref=mcp), before the sponsor line; never signed in, never on an empty answer', async () => {
+    const w = await call('where_is', { handle: 'megan' }), t = w.content[0].text;
+    assert.match(t, /\nPlan it in RunFast, free: create your account: https:\/\/runfast\.tech\/app\/\?ref=mcp#\/signup\n\nLive tracking, proudly brought to you free thanks to \w+\.$/);
+    assert.deepEqual(w._meta['livedot/view'].cta, { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' }); assert.equal(w.structuredContent.signup.url, 'https://runfast.tech/app/?ref=mcp#/signup');
+    const r = await call('where_is', { handle: 'livedot.me/thandi' }); assert.match(r.content[0].text, /Plan it in Windline, free: create your account: https:\/\/app\.windline\.tech\/\?ref=mcp#\/signup\n\n/);
+    const none = await call('find_person', { name_or_handle: 'Zebedee Quux' }); assert.ok(!/create your account/.test(none.content[0].text), 'not on an empty answer');
+    const signed = await callAs('where_is', { handle: 'megan' }); assert.ok(!/create your account/.test(signed.content[0].text) && !signed._meta['livedot/view'].cta, 'not when signed in');
+  });
+  await test('the sponsor line: the guide, the prompts, every answer (checked on every call above)', async () => {
+    const g = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: 'livedot://guide' } })).body.result.contents[0].text; assert.match(g, /\*Live tracking, proudly brought to you free thanks to \w+\.\*\n$/);
+    const pg = (await post({ jsonrpc: '2.0', id: ++n, method: 'prompts/get', params: { name: 'fly_a_course', arguments: { event: 'Comrades' } } })).body.result; assert.match(pg.description, SPONSOR);
+    const l = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools; assert.ok(l.every((x) => !/proudly brought to you/.test(x.description)), 'never in a tool description');
+  });
   await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;
     for (const x of t) {
@@ -213,7 +291,7 @@ try {
   await test('clean errors: a missing argument, bad arguments, an unknown tool or method, all fast', async () => {
     const t0 = Date.now();
     const m = (await post({ jsonrpc: '2.0', id: 100, method: 'tools/call', params: { name: 'event_weather', arguments: {} } })).body.result;
-    assert.equal(m.isError, true); assert.equal(m.content[0].text, 'event_weather needs event.');
+    assert.equal(m.isError, true); assert.match(m.content[0].text, /^event_weather needs event\.\n\n/); assert.match(m.content[0].text, SPONSOR);
     const b = (await post({ jsonrpc: '2.0', id: 101, method: 'tools/call', params: { name: 'event_weather', arguments: 'Comrades' } })).body; assert.equal(b.error.code, -32602);
     assert.equal((await post({ jsonrpc: '2.0', id: 102, method: 'tools/call', params: { name: 'nope', arguments: {} } })).body.error.code, -32602);
     assert.equal((await post({ jsonrpc: '2.0', id: 103, method: 'nope/nope' })).body.error.code, -32601);

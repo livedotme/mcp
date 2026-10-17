@@ -103,7 +103,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. A GPX link for each day only when the organiser shares route files; otherwise it says so. |
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
-| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. No account. |
+| `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. No account. |
 
 ### For organisers and club admins (sign in)
 
@@ -111,12 +111,12 @@ Connect your **Windline** or **RunFast** account and the assistant can work on y
 
 | Tool | Scope | What it does |
 |---|---|---|
-| `list_my_events` | events.read | Your events: drafts and published, dates, distance, finished or not, with links. |
-| `create_event` | events.write | A **draft** ride, tour or race (Windline) or run or race (RunFast) from GPX files or links. Not public until you publish it. |
+| `list_my_events` | events.read | Your events: drafts, published and private, dates, distance, finished or not, with links; and the club and organiser pages you run. |
+| `create_event` | events.write | A ride, tour or race (Windline) or run or race (RunFast) from GPX files or links. Drop in several files and it's a tour: days ordered by the numbers in the file names (else by the map), named from the towns at each end, one day after another from your start; you check the plan once, then it's made. **Private** (just you: My Rides with its own private link, or a private run) or **shared** (a draft for a group, public once you publish it). Your tour notes for riders, up to 10,000 characters. |
 | `update_event` | events.write | Name, description, notes, start dates and times. Never a finished event. |
 | `add_tour_notes` | events.write | A Windline tour's notes for riders (what to pack, meeting points). |
 | `publish_event` | events.publish | Publishes a draft, only after you confirm. Private events stay private. |
-| `post_club_ride` | clubs.post | A draft group ride or club run on a club or organiser page you run. |
+| `post_club_ride` | clubs.post | A draft group ride or club run on a club or organiser page you run (always the club's, never private). If you run a club and don't say who a ride is for, the assistant asks first. |
 
 > “Make a two-day tour from these GPX files, starting 6 March at 6:00.” → a draft on your dashboard, with the weather for both days.
 
@@ -125,6 +125,8 @@ Connect your **Windline** or **RunFast** account and the assistant can work on y
 Every tool declares a human title, honest annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) and an `outputSchema` for its `structuredContent` (`src/schemas.js`).
 
 **Prompts.** `track_someone` (Track someone in a race), `race_day_weather` (Race-day weather) and `fly_a_course` (Fly a course). **Resources.** The live map (`ui://livedot/live-map.html`) and a short guide (`livedot://guide`). A static server card is at `/.well-known/mcp/server-card.json`.
+
+On the free paths (no sign-in) an answer ends with one line to a free Windline or RunFast account (`?ref=mcp`), before the sponsor line; never on a signed-in answer.
 
 Every tool takes `units`: `metric` or `imperial`. Without it, the asker's region decides (ChatGPT sends it); with neither, the event's country leads and the other system follows in brackets: “km 79 (mile 49)”. All tools are read-only (`readOnlyHint`).
 

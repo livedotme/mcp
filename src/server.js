@@ -179,6 +179,8 @@ ${DESCRIPTION}
 - A Windline cycling tour's days and route files: tour_route; the organiser's notes for riders: tour_notes (beta).
 - The weather along your own route (a GPX file or a Ride with GPS link): plan_route.
 - Organisers and club admins, signed in (OAuth): list_my_events, create_event, update_event, add_tour_notes, publish_event, post_club_ride. New events are drafts; nothing is published without the user's yes.
+- Several GPX files are one tour: pass them all to create_event (or plan_route for the weather). The days are ordered by the numbers in the file names, else by the map; the first call returns the plan to check with the user, then confirm: true makes it.
+- Who it's for: if they run a club or organiser page (list_my_events) and didn't say, ask once: a private ride or run for them (create_event, visibility private), or the club's (post_club_ride).
 
 ## Try it any time
 "Comrades demo" (running) and "Coast Classic demo" (cycling) are demo races that are live all day: event_status "Coast Classic demo", event_weather "Comrades demo", fly_route "Comrades demo".
@@ -202,6 +204,20 @@ export function serverCard(origin = 'https://livedot.me') {
 const ok = (id, result) => ({ jsonrpc: '2.0', id, result });
 const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id, error: { code, message } });
 
+// The free paths (no sign-in): one line to a free account in the app that fits the sport, before the sponsor line, measured by ?ref=mcp.
+// Never on a signed-in answer, never on an answer with nothing in it.
+const FREE = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route']);
+export const SIGNUP = {
+  windline: { label: 'Plan it in Windline, free: create your account', url: 'https://app.windline.tech/?ref=mcp#/signup' },
+  runfast: { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' },
+};
+function signupLine(out, sponsor) {
+  const S = out.structured, first = Array.isArray(S.people) && S.people[0], run = /^run/.test(String(S.sport || (first && first.sport) || '')) || S.app === 'runfast' || (out.map && out.map.sport === 'run');
+  const cta = SIGNUP[run ? 'runfast' : 'windline'], line = `${cta.label}: ${cta.url}`;
+  out.text = out.text.endsWith(sponsor) ? `${out.text.slice(0, -sponsor.length).replace(/\s*$/, '')}\n${line}\n\n${sponsor}` : `${out.text}\n${line}`;
+  out.structured = { ...S, signup: cta }; if (out.map) out.map.cta = cta;
+}
+
 async function call(name, args, meta, env, rq = {}) {
   const R = reads(env), now = Date.now(), ctx = { R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
   const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool }[name];
@@ -216,6 +232,7 @@ async function call(name, args, meta, env, rq = {}) {
     if (e && e.status) return { isError: true, content: [{ type: 'text', text: e.message + '\n\n' + (await sponsorLineFor(R)) }], structuredContent: { view: 'none', error: e.message } };
     throw e;
   }
+  if (!ctx.authorization && FREE.has(name) && out.structured && out.structured.view !== 'none') signupLine(out, await sponsorLineFor(R));
   const res = { content: [{ type: 'text', text: out.text }], structuredContent: { view: 'none', ...(out.structured || {}) } };
   if (out.map) res._meta = { 'livedot/view': out.map };
   return res;
@@ -240,7 +257,7 @@ export async function rpc(msg, env = {}, rq = {}) {
         const a = params.arguments || {};
         // a required argument left out: say so at once, as a tool error the model can fix (no reads, no sign-in)
         const missing = (t.inputSchema.required || []).filter((k) => a[k] == null || (typeof a[k] === 'string' && !a[k].trim()));
-        if (missing.length) return ok(id, { isError: true, content: [{ type: 'text', text: `${t.name} needs ${missing.join(' and ')}.` }], structuredContent: { view: 'none', error: `Missing ${missing.join(', ')}` } });
+        if (missing.length) return ok(id, { isError: true, content: [{ type: 'text', text: `${t.name} needs ${missing.join(' and ')}.\n\n${await sponsorLineFor(reads(env))}` }], structuredContent: { view: 'none', error: `Missing ${missing.join(', ')}` } });
         let res;
         try { res = await call(params.name, a, params._meta || {}, env, rq); }
         catch (e) {
@@ -248,7 +265,7 @@ export async function rpc(msg, env = {}, rq = {}) {
           const challenge = `Bearer resource_metadata="${rq.prm || PRM_URL}", scope="${e.scope}"${e.error ? `, error="${e.error}"` : ''}`;
           // ChatGPT starts its sign-in from a tool result that carries the challenge; other clients from HTTP 401 (MCP authorization)
           const chatgpt = Object.keys(params._meta || {}).some((k) => k.startsWith('openai/')) || /openai|chatgpt/i.test(rq.ua || '');
-          if (chatgpt) return ok(id, { isError: true, content: [{ type: 'text', text: 'Sign in to your Windline or RunFast account to do this.' }], _meta: { 'mcp/www_authenticate': [challenge] } });
+          if (chatgpt) return ok(id, { isError: true, content: [{ type: 'text', text: `Sign in to your Windline or RunFast account to do this.\n\n${await sponsorLineFor(reads(env))}` }], _meta: { 'mcp/www_authenticate': [challenge] } });
           throw Object.assign(e, { challenge, id });
         }
         return ok(id, res);
@@ -256,13 +273,13 @@ export async function rpc(msg, env = {}, rq = {}) {
       case 'resources/list': return ok(id, { resources: RESOURCES() });
       case 'resources/templates/list': return ok(id, { resourceTemplates: [] });
       case 'resources/read': {
-        if (params.uri === GUIDE_URI) return ok(id, { contents: [{ uri: GUIDE_URI, mimeType: 'text/markdown', text: GUIDE }] });
+        if (params.uri === GUIDE_URI) return ok(id, { contents: [{ uri: GUIDE_URI, mimeType: 'text/markdown', text: `${GUIDE}\n*${await sponsorLineFor(reads(env))}*\n` }] });
         if (params.uri !== WIDGET_URI) return err(id, -32002, 'Resource not found');
         return ok(id, { contents: [{ uri: WIDGET_URI, mimeType: RESOURCE.mimeType, text: WIDGET_HTML, _meta: RESOURCE_META }] });
       }
       case 'prompts/list': return ok(id, { prompts: promptList() });
       case 'prompts/get': {
-        try { return ok(id, promptGet(params.name, params.arguments)); }
+        try { const g = promptGet(params.name, params.arguments); return ok(id, { ...g, description: `${g.description} ${await sponsorLineFor(reads(env))}` }); } // the answer carries the sponsor line; the listing doesn't
         catch (e) { return err(id, e.code || -32603, e.message); }
       }
       default:
@@ -271,7 +288,7 @@ export async function rpc(msg, env = {}, rq = {}) {
     }
   } catch (e) {
     if (e instanceof NeedAuth) throw e;
-    return note ? null : ok(id, { isError: true, content: [{ type: 'text', text: 'livedot couldn\'t answer just now. Try again in a moment.' }] });
+    return note ? null : ok(id, { isError: true, content: [{ type: 'text', text: `livedot couldn't answer just now. Try again in a moment.\n\n${await sponsorLineFor(reads(env)).catch(() => '')}`.trim() }] });
   }
 }
 

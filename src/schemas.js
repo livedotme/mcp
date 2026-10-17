@@ -15,6 +15,7 @@ const COMMON = {
   sponsor_line: S('The line every answer ends with: who brings livedot\'s live tracking free.'),
   message: S('When view is "none": what to tell the user (no match, not live yet, a question back).'),
   error: S('When the call failed: what went wrong, in words for the user.'),
+  signup: X('Without a sign-in: { label, url } to make a free Windline or RunFast account (?ref=mcp).'),
 };
 const out = (views, properties, description) => ({
   type: 'object',
@@ -78,16 +79,18 @@ export const OUTPUT_SCHEMAS = {
     beta: B('tour_notes is in beta.'), tour: SN('The tour\'s name.'), notes: SN('The organiser\'s notes for riders, in their words (markdown); null when there are none.'),
     notes_updated: SN('When the notes last changed (ISO).'), url: SN('The tour\'s page.'), tours: A('Several tours matched: their names. Ask which one.'),
   }, 'A cycling tour\'s notes for riders, as the organiser wrote them.'),
-  plan_route: out(['plan_route'], { ...EVENT_WEATHER, tz: S('The route\'s IANA time zone.'), km: N('The route\'s length in km.') }, 'The weather along a route at the time you\'d ride or run it.'),
+  plan_route: out(['plan_route'], { ...EVENT_WEATHER, tz: S('The route\'s IANA time zone.'), km: N('The route\'s length in km.'), order: X('Several files: how the days were ordered (numbers, map or upload).'), order_note: X('When the file numbers and the map disagree: what was chosen.'), files: X('Several files: the file of each day, in order.') }, 'The weather along a route at the time you\'d ride or run it.'),
 };
 const WRITE = (views, description) => out(views, {
   app: SN('The account\'s app: windline or runfast.'),
   events: X('list_my_events: each event with id, name, status (draft or published), dates, km, finished, and its dashboard and public links.'),
-  id: X('The event\'s id.'), status: X('draft or published.'), dashboard: X('The organiser\'s dashboard link.'), url: X('The public link, once published.'),
+  id: X('The event\'s id.'), status: X('draft, published, or private.'), visibility: X('private (just for them) or shared (for a group).'), link: X('A private event: its private link (Windline) or where the app opens it (RunFast).'),
+  pages: X('list_my_events on Windline: the club and organiser pages they run ({ slug, name, type }). Ask who a new ride is for when there are any.'), clubs: X('list_my_events on RunFast: the clubs they run ({ slug, name }).'),
+  order: X('The plan (view tour_plan): how the days were ordered.'), note: X('The plan: when the file numbers and the map disagree.'), days: X('The plan: each day with its file, from, to, km, climbing and start.'), dashboard: X('The organiser\'s dashboard link.'), url: X('The public link, once published.'),
 }, description);
 Object.assign(OUTPUT_SCHEMAS, {
   list_my_events: WRITE(['my_events'], 'The signed-in organiser\'s events.'),
-  create_event: WRITE(['created'], 'The new draft event and its dashboard link.'),
+  create_event: WRITE(['created', 'tour_plan'], 'The plan to check with the user (view tour_plan, nothing made yet), or the new event and its links.'),
   update_event: WRITE(['update_event'], 'What changed on the event.'),
   add_tour_notes: WRITE(['add_tour_notes'], 'The tour\'s notes, saved.'),
   publish_event: WRITE(['publish_event'], 'The event, now public, and its link.'),
