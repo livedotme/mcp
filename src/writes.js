@@ -6,9 +6,10 @@ import tzlookup from './gen/tzlookup.js';
 import { eventWeather } from './eventweather.js';
 import { clock } from './words.js';
 import { planTour, planLines } from './plantour.js';
+import { parseMembers } from './members.js';
 
 export const RESOURCE_META = 'https://livedot.me/.well-known/oauth-protected-resource/mcp';
-export const SCOPE = { list_my_events: 'events.read', create_event: 'events.write', update_event: 'events.write', add_tour_notes: 'events.write', publish_event: 'events.publish', post_club_ride: 'clubs.post' };
+export const SCOPE = { list_my_events: 'events.read', create_event: 'events.write', update_event: 'events.write', add_tour_notes: 'events.write', publish_event: 'events.publish', post_club_ride: 'clubs.post', invite_members: 'events.write' };
 
 /** Ask for a sign-in: the MCP server answers 401 (or, for ChatGPT, a result that starts its sign-in). */
 export class NeedAuth extends Error { constructor(scope, error) { super('Sign in to your Windline or RunFast account to do this.'); this.scope = scope; this.error = error || null; } }
@@ -108,6 +109,23 @@ export const WRITE_TOOLS = [
       required: ['page', 'name', 'start'], additionalProperties: false },
     annotations: ann('Post a club ride or run', { destructiveHint: false }),
     securitySchemes: auth('clubs.post'),
+  },
+  {
+    name: 'invite_members',
+    title: 'Invite members by email',
+    description: 'Invite a club\'s members, or a tour\'s riders, by email, from a list the organiser gives (a CSV, a spreadsheet\'s text, or names and addresses typed in): for a club or organiser page the signed-in person runs (page on Windline, club on RunFast) or a published tour of theirs (event). '
+      + 'Each person gets one email from livedot: "<club> added you as a member" (or "<organiser> added you to <tour>") with Confirm; nobody joins until they confirm, and nobody is invited twice. '
+      + 'The first call (without confirm) only reads the list and returns who would be invited and who\'s skipped (listed twice, invited before, unsubscribed, no usable email): show the organiser that, get a yes, then call again with confirm: true. A day\'s limit: 500 for club admins and managers, 50 for a tour\'s organiser, 20 for an account under a week old; the preview says how many go today.',
+    inputSchema: { type: 'object', properties: {
+      page: { type: 'string', description: 'Windline: the club page address they run (livedot.me/<address> or windline.tech/c/<address>).' },
+      club: { type: 'string', description: 'RunFast: the club address they manage (runfast.tech/c/<address>).' },
+      event: { type: 'string', description: 'A published Windline tour of theirs, by its id from list_my_events.' },
+      csv: { type: 'string', description: 'The list as the organiser gave it: a CSV or spreadsheet\'s text (any delimiter, with or without a header row), up to 2,000 people.' },
+      people: { type: 'array', description: 'Or the people as a list: [{ name, email }].', items: { type: 'object', properties: { name: { type: 'string', description: 'Their name.' }, email: { type: 'string', description: 'Their email address.' } } } },
+      confirm: { type: 'boolean', description: 'true only after the organiser said yes to the preview this tool returned.' } },
+      additionalProperties: false },
+    annotations: ann('Invite members by email', { destructiveHint: false }),
+    securitySchemes: auth('events.write'),
   },
 ];
 WRITE_TOOLS.forEach((t) => { t._meta = { ...(t._meta || {}), securitySchemes: t.securitySchemes }; }); // ChatGPT reads both
@@ -274,6 +292,14 @@ export async function writeTool(ctx, name, args, sponsorLine) {
     if (plan && plan.note) res.text = `${plan.note}\n${res.text}`;
     res.map = draftView(ctx, ev, res.structured, sponsorLine);
     return res;
+  }
+  if (name === 'invite_members') { // the list read here (members.js); the invites kept and sent by Windline's server (invites.js)
+    let people = Array.isArray(a.people) && a.people.length ? a.people.filter((x) => x && typeof x === 'object').map((x) => ({ name: String(x.name || '').slice(0, 80), email: String(x.email || '').slice(0, 254) })) : null, read = null;
+    if (!people) { if (!a.csv) throw new Plain('Send the list: the CSV (or the spreadsheet\'s text), or the people as names and emails.'); read = parseMembers(a.csv); people = read.people; }
+    if (!people.length) throw new Plain('I couldn\'t find any names or email addresses in that list. A CSV with a name and an email in each row works best.');
+    const j = await tool(ctx, name, { page: a.page, club: a.club, event: a.event, people, confirm: a.confirm === true });
+    if (read && read.over) j.text += ` Only the first 2,000 rows were read (the file has ${read.rows}).`;
+    return withSponsor(j, sponsorLine, 'invites');
   }
   if (name === 'update_event' || name === 'add_tour_notes' || name === 'publish_event') return withSponsor(await tool(ctx, name, { ...a, id: a.event_id }), sponsorLine, name);
   throw new Plain('Unknown tool.');

@@ -7,6 +7,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { handle, TOOLS, serverCard } from '../src/server.js';
+import { parseMembers } from '../src/members.js';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url)), PORT = 8790 + Math.floor(Math.random() * 100);
 const fx = spawn(process.execPath, [path.join(DIR, 'fixture-api.mjs')], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
@@ -40,8 +41,8 @@ try {
     assert.equal(i.body.result.protocolVersion, '2025-06-18'); assert.equal(i.body.result.serverInfo.title, 'livedot MCP');
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
-    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride']);
-    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
+    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
+    t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route', 'tap_on_the_back', 'invite_members'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, 'ui://livedot/live-map.html'); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
     const b = await post([{ jsonrpc: '2.0', id: 4, method: 'ping' }, { jsonrpc: '2.0', method: 'notifications/initialized' }]); assert.equal(b.body.length, 1);
@@ -132,7 +133,7 @@ try {
   });
   await test('sign-in: write tools need an account; read tools and plan_route don’t', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body.result.tools;
-    assert.equal(t.length, 14); const by = Object.fromEntries(t.map((x) => [x.name, x]));
+    assert.equal(t.length, 16); const by = Object.fromEntries(t.map((x) => [x.name, x]));
     ['find_person', 'where_is', 'plan_route'].forEach((n) => assert.equal(by[n].securitySchemes[0].type, 'noauth'));
     assert.deepEqual(by.create_event.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.equal(by.publish_event.annotations.destructiveHint, true); assert.equal(by.list_my_events.annotations.readOnlyHint, true);
     assert.match(by.publish_event.description, /ALWAYS ask the user to confirm/);
@@ -263,6 +264,48 @@ try {
     const g = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: 'livedot://guide' } })).body.result.contents[0].text; assert.match(g, /\*Live tracking, proudly brought to you free thanks to \w+\.\*\n$/);
     const pg = (await post({ jsonrpc: '2.0', id: ++n, method: 'prompts/get', params: { name: 'fly_a_course', arguments: { event: 'Comrades' } } })).body.result; assert.match(pg.description, SPONSOR);
     const l = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools; assert.ok(l.every((x) => !/proudly brought to you/.test(x.description)), 'never in a tool description');
+  });
+  // ---- a tap on the back (Wes, 17 Oct), through Windline's /api/mcp/tap (stood in for here; the rules are riders.js's and live.js's)
+  const lastSeen = async () => (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).pop();
+  await test('tap_on_the_back: sent through the apps’ tap, the live map with it, the free-account line, the sponsor line; honest annotations', async () => {
+    const r = await call('tap_on_the_back', { handle: 'megan', name: 'Sam' }, { 'openai/subject': 'v1/abc123' }), t = r.content[0].text, sent = await lastSeen();
+    assert.match(t, /^Tap sent\. Megan will feel it on their phone\.\n\n/); assert.equal(r.structuredContent.view, 'tap'); assert.equal(r.structuredContent.sent, true); assert.equal(r._meta['livedot/view'].kind, 'person');
+    assert.match(t, /Plan it in RunFast, free: create your account/); assert.match(t, SPONSOR);
+    assert.equal(sent.args.app, 'runfast'); assert.equal(sent.args.handle, 'megan'); assert.equal(sent.args.name, 'Sam'); assert.match(sent.args.asker, /^[0-9a-f]{64}$/); assert.ok(!JSON.stringify(sent).includes('abc123'), 'the assistant’s user id is hashed before it goes anywhere'); assert.equal(sent.auth, null);
+    const tl = TOOLS.find((x) => x.name === 'tap_on_the_back'); assert.equal(tl.annotations.readOnlyHint, false); assert.equal(tl.annotations.destructiveHint, false); assert.match(tl.description, /Only when the user asks/); assert.match(tl.description, /never on your own/);
+    assert.deepEqual(tl.securitySchemes, [{ type: 'noauth' }, { type: 'oauth2', scopes: [] }]);
+  });
+  await test('tap_on_the_back: signed in it carries their name; taps off, again within a minute, not live (private): said plainly; finished in the last day: a congratulation', async () => {
+    const si = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'tap_on_the_back', arguments: { handle: 'megan' } } }, { Authorization: 'Bearer good-token' }), sj = (await si.json()).result;
+    assert.match(sj.content[0].text, /^Tap sent\./); assert.ok(!/create your account/.test(sj.content[0].text), 'signed in: no free-account line'); assert.equal((await lastSeen()).auth, 'Bearer good-token');
+    const off = await call('tap_on_the_back', { handle: 'tapsoff' }); assert.match(off.content[0].text, /^They has taps|turned off/); assert.match(off.content[0].text, /turned off, so I can't send one\./);
+    const again = await call('tap_on_the_back', { handle: 'again' }); assert.match(again.content[0].text, /a tap a moment ago: you can give another in a minute\./);
+    const priv = await call('tap_on_the_back', { handle: 'private-ride' }); assert.match(priv.content[0].text, /isn't live just now, so a tap can't reach them\./); assert.ok(!/Tap sent/.test(priv.content[0].text));
+    const fin = await call('tap_on_the_back', { handle: 'finished-lerato' }); assert.match(fin.content[0].text, /^Tap sent\. Lerato finished, so it lands as a congratulation on their phone\./); assert.equal(fin.structuredContent.finished, true);
+    const none = await call('tap_on_the_back', {}); assert.match(none.content[0].text, /Tell me who/);
+  });
+  // ---- invite members from a CSV (Wes, 17 Oct): read here, sent by Windline's server (invites.js, tested there)
+  await test('members from a CSV: messy files read right (delimiters, quotes, headers or none, first and last names, "Name <email>", a BOM)', () => {
+    let m = parseMembers('﻿Name,Email\r\n"Smith, Sam",sam@example.com\r\nDan Rider,DAN@example.com\r\n\r\n,\r\nNo Mail,\r\n');
+    assert.deepEqual(m.people, [{ name: 'Smith, Sam', email: 'sam@example.com' }, { name: 'Dan Rider', email: 'DAN@example.com' }, { name: 'No Mail', email: '' }]); assert.equal(m.header, true);
+    m = parseMembers('Voornaam;Achternaam;E-mailadres\nAnna;de Vries;anna@example.nl\n'); assert.deepEqual(m.people, [{ name: 'Anna de Vries', email: 'anna@example.nl' }]);
+    m = parseMembers('first name\tsurname\tmobile\tmail\nEve\tClimber\t+27 82\teve@example.com'); assert.deepEqual(m.people, [{ name: 'Eve Climber', email: 'eve@example.com' }]);
+    m = parseMembers('Sam Smith <sam@example.com>\nDan <dan@example.com>'); assert.deepEqual(m.people, [{ name: 'Sam Smith', email: 'sam@example.com' }, { name: 'Dan', email: 'dan@example.com' }]); assert.equal(m.header, false);
+    m = parseMembers('fay@example.com,Fay Runner,Johannesburg\nkim@example.com,Kim,Durban'); assert.deepEqual(m.people.map((x) => x.email), ['fay@example.com', 'kim@example.com']); assert.equal(m.people[0].name, 'Fay Runner Johannesburg');
+    m = parseMembers('Member|E-mail\n"Ann ""AJ"" Jones"|ann@example.com'); assert.deepEqual(m.people, [{ name: 'Ann "AJ" Jones', email: 'ann@example.com' }]);
+    assert.throws(() => parseMembers('x'.repeat(2e6 + 1)), /over 2 MB/);
+  });
+  await test('invite_members: a preview first, then confirm; signed-in only; the sponsor line; never a free-account line', async () => {
+    const csv = 'Name,Email\nSam Smith,sam@example.com\nDan Rider,dan@example.com\n';
+    const u = await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'invite_members', arguments: { page: 'acme-cc', csv } } }); assert.equal(u.status, 401);
+    const pr = (await (await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'invite_members', arguments: { page: 'acme-cc', csv } } }, { Authorization: 'Bearer good-token' })).json()).result;
+    assert.equal(pr.structuredContent.view, 'invites'); assert.equal(pr.structuredContent.state, 'preview'); assert.match(pr.content[0].text, SPONSOR); assert.ok(!/create your account/.test(pr.content[0].text));
+    let sent = await lastSeen(); assert.equal(sent.tool, 'invite_members'); assert.deepEqual(sent.args.people, [{ name: 'Sam Smith', email: 'sam@example.com' }, { name: 'Dan Rider', email: 'dan@example.com' }]); assert.equal(sent.args.confirm, false); assert.equal(sent.args.page, 'acme-cc');
+    const go = (await (await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'invite_members', arguments: { page: 'acme-cc', csv, confirm: true } } }, { Authorization: 'Bearer good-token' })).json()).result;
+    assert.equal(go.structuredContent.state, 'sent'); assert.equal((await lastSeen()).args.confirm, true); conforms('invite_members', go);
+    const e = (await (await postRaw({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name: 'invite_members', arguments: { page: 'acme-cc', csv: ' , \n,,\n' } } }, { Authorization: 'Bearer good-token' })).json()).result;
+    assert.equal(e.isError, true); assert.match(e.content[0].text, /couldn't find any names or email addresses/);
+    const tl = TOOLS.find((x) => x.name === 'invite_members'); assert.equal(tl.annotations.readOnlyHint, false); assert.deepEqual(tl.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.match(tl.description, /nobody joins until they confirm/);
   });
   await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;

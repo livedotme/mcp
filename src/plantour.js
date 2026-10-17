@@ -46,11 +46,11 @@ export function routeOrder(items) {
 }
 
 // ---- the town at a point (Photon on OpenStreetMap, gpx.js placeName's second service: free, no key; its first is for browsers only)
-const placeMemo = new Map();
+const placeMemo = new Map(), PLACE_MAX = 500, PLACE_TTL = 864e5; // towns by rounded point: at most 500, each for a day (KPMG note, 17 Oct)
 const okPlace = (v) => (v && typeof v === 'string' && !/municipality|ward|district|region|county|province|^\d/i.test(v) && v.length <= 32 ? v.trim() : '');
 export async function placeName(lat, lon) {
   const k = `${(+lat).toFixed(3)},${(+lon).toFixed(3)}`; // about 100 m: the town, never the house
-  if (placeMemo.has(k)) return placeMemo.get(k);
+  const held = placeMemo.get(k); if (held && Date.now() - held.at < PLACE_TTL) return held.name;
   const [a, b] = k.split(',');
   let name = '';
   try {
@@ -59,8 +59,8 @@ export async function placeName(lat, lon) {
     const j = r.ok ? await r.json() : null, q = (j && j.features && j.features[0] && j.features[0].properties) || {};
     name = okPlace(q.name) || '';
   } catch (e) { name = ''; }
-  if (placeMemo.size > 500) placeMemo.clear();
-  placeMemo.set(k, name);
+  if (placeMemo.size >= PLACE_MAX) placeMemo.delete(placeMemo.keys().next().value); // the oldest goes first: never more than PLACE_MAX
+  placeMemo.set(k, { name, at: Date.now() });
   return name;
 }
 

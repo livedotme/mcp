@@ -3,7 +3,7 @@
 // text everywhere else. handle(request, env) is the whole server; functions/mcp.js serves it at livedot.me/mcp.
 import { reads } from './reads.js';
 import { unitsFor } from './words.js';
-import { findPerson, whereIs, eventStatus, eventWeatherTool, flyRouteTool, tourRouteTool, tourNotesTool } from './tools.js';
+import { findPerson, whereIs, eventStatus, eventWeatherTool, flyRouteTool, tourRouteTool, tourNotesTool, tapOnTheBack } from './tools.js';
 import { WIDGET_HTML } from './gen/widget.js';
 import { WL_VERSION } from './gen/engine.js';
 import { landing } from './landing.js';
@@ -132,10 +132,30 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: { tour: { type: 'string', description: 'The tour\'s name, address or organiser.' }, question: { type: 'string', description: 'The rider\'s question, if any.' } }, required: ['tour'], additionalProperties: false },
     annotations: { title: 'A cycling tour\'s notes for riders (beta)', ...READ_ONLY },
   },
+  {
+    name: 'tap_on_the_back',
+    title: 'Give someone a tap on the back',
+    description: 'Send someone in a live race a tap on the back: it buzzes on their phone, with your name if you\'re signed in (or the first name you give). In the day after their finish it lands as a congratulation. '
+      + 'Only when the user asks to give them a tap on the back (or to cheer them on, say well done): never on your own, and one per ask. Use the person id from find_person, or a livedot handle or follow link. '
+      + 'It keeps the person\'s own settings and the follow page\'s rules: if they turned taps off, aren\'t live, or only take taps from people with their link, it says so; tell the user plainly. Returns the live map too.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        person: { type: 'string', description: 'A person id from find_person, e.g. "runfast:p:pdemo00megan" or "h:megan".' },
+        handle: { type: 'string', description: 'A livedot handle ("megan") or link (livedot.me/megan).' },
+        code: { type: 'string', description: 'A follow link or its code (windline.tech/f/<code>, runfast.tech/f/<code>).' },
+        name: { type: 'string', description: 'The first name the user wants on the tap ("Sam"), if they gave one. A signed-in user\'s tap shows their own public name instead.' },
+        units: UNITS,
+      },
+      additionalProperties: false,
+    },
+    annotations: { title: 'Give someone a tap on the back', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    _meta: uiMeta('Sending the tap…', 'Tap sent'),
+  },
 ];
 
 // Read tools need no account; the write tools sign in (OAuth 2.1, writes.js). ChatGPT reads securitySchemes per tool.
-TOOLS.forEach((t) => { t.securitySchemes = [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; });
+TOOLS.forEach((t) => { t.securitySchemes = t.name === 'tap_on_the_back' ? [{ type: 'noauth' }, { type: 'oauth2', scopes: [] }] : [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; }); // a tap: anyone; signed in, it carries your name
 TOOLS.push(...WRITE_TOOLS);
 { const pr = TOOLS.find((t) => t.name === 'plan_route'); pr._meta = { ...uiMeta('Reading your route…', 'Weather ready'), ...pr._meta }; } // plan_route draws the weather map
 for (const n of ['create_event', 'post_club_ride']) { const t = TOOLS.find((x) => x.name === n); t._meta = { ...uiMeta('Creating the draft…', 'Draft ready'), ...t._meta }; } // both draw the draft's card
@@ -174,12 +194,14 @@ ${DESCRIPTION}
 ## Which tool
 - A name ("Where's Megan in the Comrades?"): find_person. Several matches: ask the user one short question, never guess.
 - A livedot handle (@megan, livedot.me/megan), a follow link or a person id: where_is.
+- Give someone a tap on the back (only when the user asks): tap_on_the_back. It buzzes on their phone; in the day after their finish it's a congratulation.
 - How a race is going, who's leading: event_status.
 - The weather for an event: event_weather. Fly over a course: fly_route.
 - A Windline cycling tour's days and route files: tour_route; the organiser's notes for riders: tour_notes (beta).
 - The weather along your own route (a GPX file or a Ride with GPS link): plan_route.
 - Organisers and club admins, signed in (OAuth): list_my_events, create_event, update_event, add_tour_notes, publish_event, post_club_ride. New events are drafts; nothing is published without the user's yes.
 - Several GPX files are one tour: pass them all to create_event (or plan_route for the weather). The days are ordered by the numbers in the file names, else by the map; the first call returns the plan to check with the user, then confirm: true makes it.
+- Invite a club's members or a tour's riders by email, from a CSV: invite_members (a preview first; nobody joins until they confirm).
 - Who it's for: if they run a club or organiser page (list_my_events) and didn't say, ask once: a private ride or run for them (create_event, visibility private), or the club's (post_club_ride).
 
 ## Try it any time
@@ -206,7 +228,7 @@ const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id
 
 // The free paths (no sign-in): one line to a free account in the app that fits the sport, before the sponsor line, measured by ?ref=mcp.
 // Never on a signed-in answer, never on an answer with nothing in it.
-const FREE = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route']);
+const FREE = new Set(['find_person', 'where_is', 'event_status', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'tap_on_the_back']);
 export const SIGNUP = {
   windline: { label: 'Plan it in Windline, free: create your account', url: 'https://app.windline.tech/?ref=mcp#/signup' },
   runfast: { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' },
@@ -218,9 +240,12 @@ function signupLine(out, sponsor) {
   out.structured = { ...S, signup: cta }; if (out.map) out.map.cta = cta;
 }
 
+/** The assistant's own anonymous id for its user (ChatGPT's openai/subject), hashed here before it goes anywhere: a tap's tapper. */
+async function sha256hex(s) { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(d)].map((x) => x.toString(16).padStart(2, '0')).join(''); }
+
 async function call(name, args, meta, env, rq = {}) {
-  const R = reads(env), now = Date.now(), ctx = { R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
-  const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool }[name];
+  const R = reads(env), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
+  const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool, tap_on_the_back: tapOnTheBack }[name];
   let out;
   try {
     if (fn) out = await fn(ctx, args || {});

@@ -225,6 +225,42 @@ export async function whereIs(ctx, args) {
   return personAnswer(ctx, r.p, r.via);
 }
 
+// ---------------------------------------------------------------- tap_on_the_back (Wes, 17 Oct: "millions of people asking ChatGPT where
+// their loved one is, and giving them a tap on the back"). The tap goes through the apps' own tap (Windline's /api/mcp/tap, livedot.me's
+// server only: riders.js or RunFast's live.js), so every rule of the follow page holds: only while they're live or in the day after the
+// finish (a congratulation), never if they turned taps off, one a minute from the same asker, the same caps.
+const firstOf = (n) => String(n || '').replace(/\(.*?\)/g, '').trim().split(/\s+/)[0] || 'They';
+export async function tapOnTheBack(ctx, args) {
+  const { R } = ctx, sponsor = sponsorLine(await sponsorName(R)), r = await resolve(ctx, args);
+  const tapAt = async (app, target) => {
+    let res; try { res = await fetch(`${R.H.mcp}/tap`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(ctx.proxy || {}), ...(ctx.authorization ? { Authorization: ctx.authorization } : {}) },
+      body: JSON.stringify({ app, ...target, name: args.name ? String(args.name).slice(0, 40) : undefined, asker: ctx.asker || undefined }), signal: AbortSignal.timeout(15000) }); } catch (e) { return { status: 502, body: {} }; }
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+  let p = r.p, via = r.via, out;
+  if (p) out = await tapAt(p.app, { pid: p.pid, code: via && via.code ? via.code : undefined, handle: via && via.handle ? via.handle : undefined });
+  else if (args.handle || /^h:/.test(String(args.person || ''))) { // a finish in the last day: not "racing" any more, but a tap is a congratulation
+    const handle = String(args.handle || String(args.person).slice(2)).trim().replace(/^@/, '').replace(/^https?:\/\/livedot\.me\//, '').toLowerCase();
+    for (const app of ['runfast', 'windline']) { out = await tapAt(app, { handle }); if (out.status === 200) break; }
+  }
+  if (!out) return { text: `${r.text}\n\n${sponsor}`, structured: { view: 'none', message: r.text }, map: null };
+  const who = p ? firstOf(p.name) : (out.body && out.body.first) || 'They';
+  if (out.status !== 200 || !out.body.ok) {
+    const e = String((out.body && out.body.error) || ''), why = out.status === 429 && /another in a minute/.test(e) ? `You gave ${who} a tap a moment ago: you can give another in a minute.`
+      : out.status === 429 ? 'Lots of taps are going out from here just now. Try again in a minute.'
+        : /turned taps on the back off/.test(e) ? `${who} has taps on the back turned off, so I can't send one.`
+          : /Follow them first/.test(e) ? `${who} only gets taps from people who follow them or have their live link. Ask for their link (livedot.me/<handle> or a follow link), then try again.`
+            : /more than a day ago/.test(e) ? `${who} finished more than a day ago, so taps on the back have closed.`
+              : out.status === 404 ? `${who} isn't live just now, so a tap can't reach them.` : 'The tap didn\'t go through just now. Try again in a moment.';
+    return { text: `${why}\n\n${sponsor}`, structured: { view: 'none', message: why, error: e || null }, map: null };
+  }
+  const done = !!out.body.finished, line = out.body.demo ? `Tap sent. ${who} (the demo runner) feels it in the demo; nothing is kept.` : done ? `Tap sent. ${who} finished, so it lands as a congratulation on their phone.` : `Tap sent. ${who} will feel it on their phone.`;
+  if (!p) return { text: `${line}\n\n${sponsor}`, structured: { view: 'tap', sent: true, finished: done, named: !!out.body.named, sponsor_line: sponsor }, map: null };
+  const ans = await personAnswer(ctx, p, via);
+  return { text: `${line}${out.body.named ? '' : ' (No name on it: connect your Windline or RunFast account, or tell me your first name, so they see who it was.)'}\n\n${ans.text}`,
+    structured: { ...ans.structured, view: 'tap', sent: true, finished: done, named: !!out.body.named, taps: out.body.count || null }, map: ans.map };
+}
+
 // ---------------------------------------------------------------- find_person
 function closeness(p, q) {
   const n = words(String(p.name).replace(/\(demo\)/i, '')).join(' '), w = words(q).join(' ');
@@ -302,6 +338,16 @@ export async function findPerson(ctx, args) {
   const nameExact = people.filter((p) => closeness(p, q) === 3);
   if (people.length === 1 || (nameExact.length === 1 && words(q).length >= 2)) { const p = people.length === 1 ? people[0] : nameExact[0]; return personAnswer(ctx, p, p.via || null); }
 
+  // nobody real and findable, but the race asked about has a demo (Comrades, Coast Classic) and its runner or rider has that
+  // name: the demo answers, labelled as the demo (Wes, 17 Oct: "where's Megan in the Comrades" must work for anyone trying it)
+  if (!people.length && !demo && letters >= 3) {
+    const ask = words(event || '').filter((x) => !STOP.has(x));
+    for (const d of ask.length ? DEMOS.filter((x) => ask.some((w) => x.words.some((y) => y !== 'demo' && y.startsWith(w)))) : []) {
+      const r = await R.liveByCode(d.app, 'demo'), v = listOf(r.body)[0]; if (!v) continue;
+      const p = { ...norm(d.app, v), via: { code: 'demo' } };
+      if (closeness(p, q)) return personAnswer(ctx, p, p.via, { note: `This is the ${d.name.replace(/\s*\(demo\)\s*$/i, '')} demo, live on livedot every day, so you can try following someone. The real race shows here when it's on, for everyone who chose to be findable.` });
+    }
+  }
   if (!people.length) {
     const why = letters < 3 && !demo ? 'Give me at least three letters of their name, or their livedot handle.' : `I couldn't find anyone called "${q}"${scope ? ' in ' + scope : event ? ` in "${event}" (it may not be live right now)` : ''} who is findable on a live race. Only people who chose to be findable show up in search; otherwise ask them for their livedot link (livedot.me/<handle>).`;
     const t = [why, ...narrowed.notes].join(' ');

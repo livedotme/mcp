@@ -59,6 +59,7 @@ const EVENT_WEATHER = {
 };
 
 export const OUTPUT_SCHEMAS = {
+  tap_on_the_back: out(['tap'], { ...PERSON, sent: B('The tap went through.'), finished: B('They\'d finished: it landed as a congratulation.'), named: B('The tap carried a name.'), taps: X('Their taps so far, with this one.') }, 'The tap, and their live answer.'),
   find_person: out(['person', 'picker'], PERSON, 'One match: the person\'s live answer (view "person"). Several: the 5 most likely (view "picker").'),
   where_is: out(['person'], PERSON, 'The person\'s live answer: where they are, time against their goal, the finish it points to and the weather there.'),
   event_status: out(['event'], {
@@ -95,6 +96,12 @@ Object.assign(OUTPUT_SCHEMAS, {
   add_tour_notes: WRITE(['add_tour_notes'], 'The tour\'s notes, saved.'),
   publish_event: WRITE(['publish_event'], 'The event, now public, and its link.'),
   post_club_ride: WRITE(['club_ride'], 'The club ride, posted on the club\'s page.'),
+  invite_members: out(['invites'], {
+    app: SN('The account\'s app: windline or runfast.'), state: X('preview (nothing sent yet) or sent.'), target: X('The club or tour: { kind, name, url }.'),
+    to_send: X('How many would be (or were) invited.'), sent: X('How many emails went out.'), failed: X('How many couldn\'t be sent just now.'),
+    skipped: X('Skipped: { invalid, duplicate, already, unsubscribed, over_limit }.'), people: X('The first 25 who\'d get an invite: { name, email }.'),
+    invalid: X('Rows without a usable email (the first 10).'), left_today: X('Invites left today (500 a day).'), subject: X('The email\'s subject.'),
+  }, 'Who would get an invite (preview), or who got one.'),
 });
 
 // ---------------------------------------------------------------- prompts: the three things people ask most, ready to pick

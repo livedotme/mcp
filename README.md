@@ -103,6 +103,7 @@ Real answers, word for word, on sample data and the apps' demo races.
 | `tour_route` | A Windline cycling tour by name or organiser: every day (from and to, distance, climbing, start time), the map and the weather. A GPX link for each day only when the organiser shares route files; otherwise it says so. |
 | `tour_notes` | *Beta.* A tour organiser's own notes for riders (what to pack, meeting points), quoted in their words. |
 
+| `tap_on_the_back` | A tap on the back for someone racing live (only when you ask): it buzzes on their phone, through the same tap and rules as their follow page; in the day after their finish, a congratulation. Signed in, it carries your name; if not, the first name you give. |
 | `plan_route` | The weather along your own route (a GPX file or a Ride with GPS link) at the time you'll ride or run it: the forecast inside 10 days, 10 years of weather beyond. Several files are one multi-day tour, ordered as `create_event` orders them. No account. |
 
 ### For organisers and club admins (sign in)
@@ -116,6 +117,7 @@ Connect your **Windline** or **RunFast** account and the assistant can work on y
 | `update_event` | events.write | Name, description, notes, start dates and times. Never a finished event. |
 | `add_tour_notes` | events.write | A Windline tour's notes for riders (what to pack, meeting points). |
 | `publish_event` | events.publish | Publishes a draft, only after you confirm. Private events stay private. |
+| `invite_members` | events.write | Invite a club's members, or a published tour's riders, by email from a CSV (any delimiter, header or none). A preview first; each person gets one livedot email with Confirm, This wasn't me and Unsubscribe; nobody joins until they confirm; never twice; a day's limit of 500 for club admins and managers, 50 for a tour's organiser, 20 for an account under a week old. |
 | `post_club_ride` | clubs.post | A draft group ride or club run on a club or organiser page you run (always the club's, never private). If you run a club and don't say who a ride is for, the assistant asks first. |
 
 > “Make a two-day tour from these GPX files, starting 6 March at 6:00.” → a draft on your dashboard, with the weather for both days.

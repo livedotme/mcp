@@ -131,6 +131,15 @@ function route(app, p, q, now) {
 function mcpStub(req, res, p, raw) {
   const j = (code, b) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(b)); };
   let b = {}; try { b = JSON.parse(raw || '{}'); } catch (e) { b = {}; }
+  if (p === '/tap') { // Windline's /api/mcp/tap, stood in for: the handle or pid decides the answer (the real rules are riders.js's and live.js's)
+    MCP_SEEN.push({ tool: 'tap', args: b, auth: req.headers.authorization || null });
+    const who = b.handle || b.pid || b.code || '';
+    if (/^(pprivate|private)/.test(who)) return j(404, { ok: false, error: 'They aren’t live just now.' });
+    if (/tapsoff/.test(who)) return j(403, { ok: false, error: 'They’ve turned taps on the back off.' });
+    if (/again/.test(who)) return j(429, { ok: false, error: 'You can give them another in a minute.' });
+    if (/finished/.test(who)) return j(200, { ok: true, named: !!b.name, count: 12, finished: true, first: 'Lerato' });
+    return j(200, { ok: true, named: !!(b.name || req.headers.authorization), count: 7, finished: false, first: 'Megan', signedIn: !!req.headers.authorization });
+  }
   if (p === '/route') {
     if (b.url && /strava/.test(b.url)) return j(400, { ok: false, error: 'Strava only shares a route with the account that made it.' });
     const pts = [...String(b.gpx || '').matchAll(/<trkpt lat="([-\d.]+)" lon="([-\d.]+)"/g)].map((m) => [+m[1], +m[2], null]);
@@ -142,7 +151,8 @@ function mcpStub(req, res, p, raw) {
     return j(200, { ok: true, routes: [{ name: gn ? gn[1] : '', from: nm ? nm[1] : '', to: nm ? nm[2] : '', km: Math.round(km * 10) / 10, climb: cl ? +cl[1] : 0, pts }] });
   }
   const m = p.match(/^\/tool\/(\w+)$/);
-  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1', ...(m[1] === 'create_event' || m[1] === 'post_club_ride' ? { type: m[1] === 'create_event' ? 'tour' : 'ride', status: 'draft', dashboard: 'https://app.windline.tech/#/e/ev1' } : {}) } }); }
+  if (m) { if (req.headers.authorization !== 'Bearer good-token') return j(401, { ok: false, error: 'Sign in again.' }); MCP_SEEN.push({ tool: m[1], args: b.args }); if (m[1] === 'invite_members') return j(200, { ok: true, app: 'windline', text: b.args.confirm ? `Sent ${b.args.people.length} people an invite.` : `Ready to invite ${b.args.people.length} people.`, data: { state: b.args.confirm ? 'sent' : 'preview', to_send: b.args.people.length, skipped: { invalid: 0, duplicate: 0, already: 0, unsubscribed: 0, over_limit: 0 } } });
+    return j(200, { ok: true, app: 'windline', text: `Did ${m[1]}.`, data: { id: 'ev1', ...(m[1] === 'create_event' || m[1] === 'post_club_ride' ? { type: m[1] === 'create_event' ? 'tour' : 'ride', status: 'draft', dashboard: 'https://app.windline.tech/#/e/ev1' } : {}) } }); }
   return j(404, { ok: false, error: 'Not found' });
 }
 export const MCP_SEEN = [];
