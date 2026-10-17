@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
-import { handle } from '../src/server.js';
+import { handle, TOOLS, serverCard } from '../src/server.js';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url)), PORT = 8790 + Math.floor(Math.random() * 100);
 const fx = spawn(process.execPath, [path.join(DIR, 'fixture-api.mjs')], { env: { ...process.env, PORT: String(PORT) }, stdio: ['ignore', 'pipe', 'inherit'] });
@@ -15,7 +15,16 @@ const env = { WINDLINE_API: `http://localhost:${PORT}/windline`, RUNFAST_API: `h
 let n = 0;
 const postRaw = (body, h = {}) => handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env);
 const post = async (body, h = {}) => { const r = await handle(new Request('https://livedot.me/mcp', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...h }, body: JSON.stringify(body) }), env); return { status: r.status, body: r.status === 202 ? null : await r.json() }; };
-const call = async (name, args, meta) => { const r = await post({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args, ...(meta ? { _meta: meta } : {}) } }); assert.equal(r.status, 200); assert.ok(r.body.result, JSON.stringify(r.body)); const t = r.body.result.content[0].text; if (SHOW) console.log(`\n--- ${name} ${JSON.stringify(args)}${meta ? ' ' + JSON.stringify(meta) : ''}\n${t}`); return r.body.result; };
+const call = async (name, args, meta) => { const r = await post({ jsonrpc: '2.0', id: ++n, method: 'tools/call', params: { name, arguments: args, ...(meta ? { _meta: meta } : {}) } }); assert.equal(r.status, 200); assert.ok(r.body.result, JSON.stringify(r.body)); const t = r.body.result.content[0].text; if (SHOW) console.log(`\n--- ${name} ${JSON.stringify(args)}${meta ? ' ' + JSON.stringify(meta) : ''}\n${t}`); conforms(name, r.body.result); return r.body.result; };
+// every answer that isn't an error matches its tool's outputSchema (what a client that checks structuredContent will do)
+const TYPE = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
+const fits = (v, t) => [].concat(t).some((x) => x === TYPE(v) || (x === 'number' && TYPE(v) === 'integer'));
+function conforms(name, res) {
+  const o = TOOLS.find((x) => x.name === name).outputSchema; if (res.isError) return;
+  const s = res.structuredContent; assert.ok(s && TYPE(s) === 'object', name + ': no structuredContent');
+  (o.required || []).forEach((k) => assert.ok(k in s, `${name}: ${k} missing`));
+  for (const [k, d] of Object.entries(o.properties)) { if (!(k in s)) continue; if (d.type) assert.ok(fits(s[k], d.type), `${name}.${k}: ${TYPE(s[k])} is not ${d.type}`); if (d.enum) assert.ok(d.enum.includes(s[k]), `${name}.${k}: ${s[k]} not in ${d.enum}`); }
+}
 const SPONSOR = /Live tracking, proudly brought to you free thanks to \w+\.$/;
 const test = async (name, fn) => { try { await fn(); console.log('ok  ' + name); } catch (e) { console.log('FAIL ' + name + '\n     ' + e.message); process.exitCode = 1; } };
 
@@ -157,6 +166,47 @@ try {
   await test('no uid, email or phone anywhere', async () => {
     const r = JSON.stringify(await call('find_person', { name_or_handle: 'Megan', event: 'Comrades' })) + JSON.stringify(await call('event_status', { event: 'Coast Classic' }));
     assert.ok(!/@|"uid"|email|phone/i.test(r.replace(/livedot\.me\/@?/g, '')));
+  });
+  await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
+    const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;
+    for (const x of t) {
+      assert.ok(x.title && x.description, x.name + ': title/description'); assert.ok(x.annotations && typeof x.annotations.readOnlyHint === 'boolean', x.name + ': annotations');
+      assert.equal(x.outputSchema && x.outputSchema.type, 'object', x.name + ': outputSchema'); assert.ok(x.outputSchema.properties.view, x.name + ': view');
+      for (const [k, d] of Object.entries(x.inputSchema.properties)) assert.ok(d.description && d.description.length > 3, `${x.name}.${k}: no description`);
+    }
+    const i = (await post({ jsonrpc: '2.0', id: 91, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 't', version: '1' } } })).body.result;
+    assert.ok(i.capabilities.prompts); assert.ok(i.serverInfo.description.length > 20); assert.ok(i.serverInfo.icons.length === 2); assert.match(i.serverInfo.websiteUrl, /^https:\/\/livedot\.me/);
+  });
+  await test('prompts: list, get, unknown, missing argument', async () => {
+    const l = (await post({ jsonrpc: '2.0', id: 92, method: 'prompts/list' })).body.result.prompts;
+    assert.deepEqual(l.map((x) => x.name), ['track_someone', 'race_day_weather', 'fly_a_course']); assert.ok(l.every((x) => x.title && x.description && !x.text));
+    const g = (await post({ jsonrpc: '2.0', id: 93, method: 'prompts/get', params: { name: 'track_someone', arguments: { person: 'Megan', race: 'the Comrades' } } })).body.result;
+    assert.equal(g.messages[0].role, 'user'); assert.match(g.messages[0].content.text, /^Where's Megan in the Comrades right now\?/);
+    const w = (await post({ jsonrpc: '2.0', id: 94, method: 'prompts/get', params: { name: 'race_day_weather', arguments: { event: 'NYC Marathon' } } })).body.result; assert.match(w.messages[0].content.text, /NYC Marathon\?/);
+    assert.equal((await post({ jsonrpc: '2.0', id: 95, method: 'prompts/get', params: { name: 'nope' } })).body.error.code, -32602);
+    assert.match((await post({ jsonrpc: '2.0', id: 96, method: 'prompts/get', params: { name: 'fly_a_course', arguments: {} } })).body.error.message, /Missing argument: event/);
+  });
+  await test('resources: the live map and the guide; an unknown one is a clean error', async () => {
+    const l = (await post({ jsonrpc: '2.0', id: 97, method: 'resources/list' })).body.result.resources; assert.deepEqual(l.map((x) => x.uri), ['ui://livedot/live-map.html', 'livedot://guide']);
+    const g = (await post({ jsonrpc: '2.0', id: 98, method: 'resources/read', params: { uri: 'livedot://guide' } })).body.result.contents[0]; assert.equal(g.mimeType, 'text/markdown'); assert.match(g.text, /find_person/);
+    assert.equal((await post({ jsonrpc: '2.0', id: 99, method: 'resources/read', params: { uri: 'livedot://nope' } })).body.error.code, -32002);
+  });
+  await test('clean errors: a missing argument, bad arguments, an unknown tool or method, all fast', async () => {
+    const t0 = Date.now();
+    const m = (await post({ jsonrpc: '2.0', id: 100, method: 'tools/call', params: { name: 'event_weather', arguments: {} } })).body.result;
+    assert.equal(m.isError, true); assert.equal(m.content[0].text, 'event_weather needs event.');
+    const b = (await post({ jsonrpc: '2.0', id: 101, method: 'tools/call', params: { name: 'event_weather', arguments: 'Comrades' } })).body; assert.equal(b.error.code, -32602);
+    assert.equal((await post({ jsonrpc: '2.0', id: 102, method: 'tools/call', params: { name: 'nope', arguments: {} } })).body.error.code, -32602);
+    assert.equal((await post({ jsonrpc: '2.0', id: 103, method: 'nope/nope' })).body.error.code, -32601);
+    assert.ok(Date.now() - t0 < 200, 'errors should not wait on any read');
+  });
+  await test('the server card: the same tools, prompts and resources as the server', async () => {
+    const c = serverCard('https://livedot.me'); assert.equal(c.serverInfo.name, 'livedot'); assert.equal(c.transport.endpoint, 'https://livedot.me/mcp');
+    assert.equal(c.tools.length, TOOLS.length); assert.equal(c.prompts.length, 3); assert.equal(c.resources.length, 2); assert.equal(c.authentication.required, false);
+    const { onRequestGet } = await import('../../functions/.well-known/mcp/[[path]].js');
+    const r = onRequestGet({ request: new Request('https://livedot.me/.well-known/mcp/server-card.json'), params: { path: ['server-card.json'] } });
+    assert.equal(r.status, 200); assert.equal((await r.json()).tools.length, TOOLS.length);
+    assert.equal(onRequestGet({ request: new Request('https://livedot.me/.well-known/mcp/x'), params: { path: ['x'] } }).status, 404);
   });
   await test('HTTP: GET page, SSE 405, CORS preflight, parse error', async () => {
     let r = await handle(new Request('https://livedot.me/mcp'), env); assert.equal(r.status, 200); const html = await r.text(); assert.match(html, /Live race tracking, in ChatGPT and Claude/); assert.match(html, /proudly brought to you free thanks to/); assert.ok(!r.headers.get('X-Robots-Tag'), 'indexable on livedot.me'); assert.ok(!/mailto:/.test(html));

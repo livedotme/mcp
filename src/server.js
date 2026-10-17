@@ -9,6 +9,7 @@ import { WL_VERSION } from './gen/engine.js';
 import { landing } from './landing.js';
 import { WRITE_TOOLS, SCOPE, NeedAuth, planRoute, writeTool, RESOURCE_META as PRM_URL } from './writes.js';
 import { sponsorLineFor } from './tools.js';
+import { OUTPUT_SCHEMAS, promptList, promptGet } from './schemas.js';
 
 export const VERSION = '1.0.0';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -137,7 +138,10 @@ export const TOOLS = [
 TOOLS.forEach((t) => { t.securitySchemes = [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; });
 TOOLS.push(...WRITE_TOOLS);
 { const pr = TOOLS.find((t) => t.name === 'plan_route'); pr._meta = { ...uiMeta('Reading your route…', 'Weather ready'), ...pr._meta }; } // plan_route draws the weather map
+// every tool says what its structuredContent looks like (schemas.js), so a client can check the answer
+TOOLS.forEach((t) => { if (!OUTPUT_SCHEMAS[t.name]) throw new Error('No outputSchema for ' + t.name); t.outputSchema = OUTPUT_SCHEMAS[t.name]; });
 
+const GUIDE_URI = 'livedot://guide';
 const RESOURCE = {
   uri: WIDGET_URI, name: 'livedot live map', title: 'livedot live map', mimeType: 'text/html;profile=mcp-app',
   description: 'The live map: the course, where they are, the wind and heat on the road ahead, and Follow live.',
@@ -156,6 +160,44 @@ const INSTRUCTIONS = 'livedot answers where people are in live cycling (Windline
   + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours. When a name matches several people, ask one short question and never guess. '
   + 'Only public data: findable people on public races. plan_route needs no account. Organisers and club admins can sign in with their Windline or RunFast account (OAuth) to list, create and change their own events: new events are drafts, nothing is published without the user confirming, and finished events never change.';
 
+export const DESCRIPTION = 'Live race tracking in the chat: where someone is in a live cycling or running race, the weather on the course from Windline\'s forecast engine, race-day forecasts and a flyover of the course, with a live map. Free.';
+const SERVER_INFO = { name: 'livedot', title: 'livedot MCP', version: VERSION, description: DESCRIPTION, websiteUrl: 'https://livedot.me/mcp',
+  icons: [{ src: ICON, mimeType: 'image/svg+xml', sizes: ['any'] }, { src: ICON_PNG, mimeType: 'image/png', sizes: ['512x512'] }] };
+const CAPABILITIES = { tools: { listChanged: false }, resources: { listChanged: false }, prompts: { listChanged: false } };
+
+// A short guide for the model (and anyone reading the server's resources): what to call when, and the demo races that always work.
+const GUIDE = `# livedot MCP
+
+${DESCRIPTION}
+
+## Which tool
+- A name ("Where's Megan in the Comrades?"): find_person. Several matches: ask the user one short question, never guess.
+- A livedot handle (@megan, livedot.me/megan), a follow link or a person id: where_is.
+- How a race is going, who's leading: event_status.
+- The weather for an event: event_weather. Fly over a course: fly_route.
+- A Windline cycling tour's days and route files: tour_route; the organiser's notes for riders: tour_notes (beta).
+- The weather along your own route (a GPX file or a Ride with GPS link): plan_route.
+- Organisers and club admins, signed in (OAuth): list_my_events, create_event, update_event, add_tour_notes, publish_event, post_club_ride. New events are drafts; nothing is published without the user's yes.
+
+## Try it any time
+"Comrades demo" (running) and "Coast Classic demo" (cycling) are demo races that are live all day: event_status "Coast Classic demo", event_weather "Comrades demo", fly_route "Comrades demo".
+
+## Privacy
+Only public data: people who chose to be findable, on public races. Positions near the start and finish, and of anyone paused or stopped, are never shared. No account is needed to ask.
+
+More: https://livedot.me/mcp
+`;
+const RESOURCES = () => [{ ...RESOURCE, _meta: RESOURCE_META },
+  { uri: GUIDE_URI, name: 'livedot guide', title: 'How to use livedot MCP', mimeType: 'text/markdown', description: 'Which tool to use when, the demo races that always work, and what livedot will and won\'t share.' }];
+
+/** The static server card (/.well-known/mcp/server-card.json, SEP-1649): the same tools, prompts and resources the server lists. */
+export function serverCard(origin = 'https://livedot.me') {
+  return { protocolVersion: VERSIONS[0], serverInfo: SERVER_INFO,
+    description: DESCRIPTION, transport: { type: 'streamable-http', endpoint: `${origin}/mcp` }, capabilities: CAPABILITIES, instructions: INSTRUCTIONS,
+    authentication: { required: false, schemes: ['oauth2'], note: 'Every read tool works without an account; organisers sign in (OAuth 2.1) for the event tools.', protectedResourceMetadata: `${origin}/.well-known/oauth-protected-resource/mcp` },
+    tools: TOOLS, prompts: promptList(), resources: RESOURCES() };
+}
+
 const ok = (id, result) => ({ jsonrpc: '2.0', id, result });
 const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id, error: { code, message } });
 
@@ -173,7 +215,7 @@ async function call(name, args, meta, env, rq = {}) {
     if (e && e.status) return { isError: true, content: [{ type: 'text', text: e.message + '\n\n' + (await sponsorLineFor(R)) }], structuredContent: { view: 'none', error: e.message } };
     throw e;
   }
-  const res = { content: [{ type: 'text', text: out.text }], structuredContent: out.structured || {} };
+  const res = { content: [{ type: 'text', text: out.text }], structuredContent: { view: 'none', ...(out.structured || {}) } };
   if (out.map) res._meta = { 'livedot/view': out.map };
   return res;
 }
@@ -186,16 +228,18 @@ export async function rpc(msg, env = {}, rq = {}) {
     switch (method) {
       case 'initialize': {
         const v = VERSIONS.includes(params.protocolVersion) ? params.protocolVersion : VERSIONS[0];
-        return ok(id, { protocolVersion: v, capabilities: { tools: { listChanged: false }, resources: { listChanged: false } },
-          serverInfo: { name: 'livedot', title: 'livedot MCP', version: VERSION, websiteUrl: 'https://livedot.me', icons: [{ src: ICON, mimeType: 'image/svg+xml', sizes: ['any'] }, { src: ICON_PNG, mimeType: 'image/png', sizes: ['512x512'] }] },
-          instructions: INSTRUCTIONS });
+        return ok(id, { protocolVersion: v, capabilities: CAPABILITIES, serverInfo: SERVER_INFO, instructions: INSTRUCTIONS });
       }
       case 'ping': return note ? null : ok(id, {});
       case 'tools/list': return ok(id, { tools: TOOLS });
       case 'tools/call': {
         const t = TOOLS.find((x) => x.name === params.name);
         if (!t) return err(id, -32602, 'Unknown tool: ' + params.name);
-        const a = params.arguments && typeof params.arguments === 'object' ? params.arguments : {};
+        if (params.arguments != null && (typeof params.arguments !== 'object' || Array.isArray(params.arguments))) return err(id, -32602, 'arguments must be an object');
+        const a = params.arguments || {};
+        // a required argument left out: say so at once, as a tool error the model can fix (no reads, no sign-in)
+        const missing = (t.inputSchema.required || []).filter((k) => a[k] == null || (typeof a[k] === 'string' && !a[k].trim()));
+        if (missing.length) return ok(id, { isError: true, content: [{ type: 'text', text: `${t.name} needs ${missing.join(' and ')}.` }], structuredContent: { view: 'none', error: `Missing ${missing.join(', ')}` } });
         let res;
         try { res = await call(params.name, a, params._meta || {}, env, rq); }
         catch (e) {
@@ -208,13 +252,18 @@ export async function rpc(msg, env = {}, rq = {}) {
         }
         return ok(id, res);
       }
-      case 'resources/list': return ok(id, { resources: [{ ...RESOURCE, _meta: RESOURCE_META }] });
+      case 'resources/list': return ok(id, { resources: RESOURCES() });
       case 'resources/templates/list': return ok(id, { resourceTemplates: [] });
       case 'resources/read': {
+        if (params.uri === GUIDE_URI) return ok(id, { contents: [{ uri: GUIDE_URI, mimeType: 'text/markdown', text: GUIDE }] });
         if (params.uri !== WIDGET_URI) return err(id, -32002, 'Resource not found');
         return ok(id, { contents: [{ uri: WIDGET_URI, mimeType: RESOURCE.mimeType, text: WIDGET_HTML, _meta: RESOURCE_META }] });
       }
-      case 'prompts/list': return ok(id, { prompts: [] });
+      case 'prompts/list': return ok(id, { prompts: promptList() });
+      case 'prompts/get': {
+        try { return ok(id, promptGet(params.name, params.arguments)); }
+        catch (e) { return err(id, e.code || -32603, e.message); }
+      }
       default:
         if (method.startsWith('notifications/')) return null;
         return note ? null : err(id, -32601, 'Method not found: ' + method);
