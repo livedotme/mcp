@@ -192,6 +192,18 @@ TOOLS.push(...WRITE_TOOLS);
 { const pr = TOOLS.find((t) => t.name === 'plan_route'); pr._meta = { ...uiMeta('Reading your route…', 'Weather ready'), ...pr._meta }; } // plan_route draws the weather map
 for (const n of ['create_event', 'post_club_ride']) { const t = TOOLS.find((x) => x.name === n); t._meta = { ...uiMeta('Creating the draft…', 'Draft ready'), ...t._meta }; } // both draw the draft's card
 // every tool says what its structuredContent looks like (schemas.js), so a client can check the answer
+// What ChatGPT shows while a tool works and when it's done (openai/toolInvocation/*): short and specific, on every tool (Wes, 18 Oct)
+const STATUS = {
+  find_person: ['Finding them in the race…', 'Found'], where_is: ['Getting their live position…', 'Live position ready'],
+  event_status: ['Reading the race…', 'Race ready'], club_in_race: ['Finding the team on the course…', 'Team ready'],
+  event_weather: ['Reading the weather on the course…', 'Race-day weather ready'], fly_route: ['Preparing the flyover…', 'Flyover ready'],
+  tour_route: ['Reading the tour…', 'Tour ready'], tour_notes: ['Reading the organiser\'s notes…', 'Notes ready'], tap_on_the_back: ['Sending the tap…', 'Tap sent'],
+  find_clubs: ['Finding clubs near there…', 'Clubs ready'], find_events: ['Finding events near there…', 'Events ready'],
+  plan_route: ['Reading your route and the weather…', 'Weather on your route ready'], list_my_events: ['Reading your events…', 'Your events'],
+  create_event: ['Creating the draft…', 'Draft ready'], update_event: ['Saving the change…', 'Change saved'], add_tour_notes: ['Saving the tour notes…', 'Tour notes saved'],
+  publish_event: ['Publishing…', 'Published'], post_club_ride: ['Creating the draft…', 'Draft ready'], invite_members: ['Reading the list…', 'Invites ready'],
+};
+TOOLS.forEach((t) => { const st = STATUS[t.name]; if (!st) throw new Error('No status text for ' + t.name); t._meta = { ...(t._meta || {}), 'openai/toolInvocation/invoking': st[0], 'openai/toolInvocation/invoked': st[1] }; });
 TOOLS.forEach((t) => { if (!OUTPUT_SCHEMAS[t.name]) throw new Error('No outputSchema for ' + t.name); t.outputSchema = OUTPUT_SCHEMAS[t.name]; });
 
 const GUIDE_URI = 'livedot://guide';
@@ -201,7 +213,7 @@ const RESOURCE = {
 };
 // The widget reads only these: MapLibre from unpkg, OpenFreeMap's light (positron) basemap, the open terrain tiles the flyover's hills
 // come from (AWS Terrain Tiles, as RunFast's Fly), livedot's typeface. Never a per-tile map key.
-const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://windline.tech', 'https://runfast.tech', 'https://weatherkit.apple.com', 'https://firebasestorage.googleapis.com', 'https://storage.googleapis.com'] }; // the apps' own hosts (people's profile pictures) and their storage (club logos); Apple's Weather mark, as Apple supplies it
+const CSP = { connectDomains: ['https://tiles.openfreemap.org', 'https://s3.amazonaws.com'], resourceDomains: ['https://livedot.me', 'https://unpkg.com', 'https://tiles.openfreemap.org', 'https://s3.amazonaws.com', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com', 'https://windline.tech', 'https://runfast.tech', 'https://weatherkit.apple.com', 'https://firebasestorage.googleapis.com', 'https://storage.googleapis.com'] }; // the apps' own hosts (people's profile pictures) and their storage (club logos); Apple's Weather mark, as Apple supplies it
 const RESOURCE_META = {
   ui: { csp: CSP, prefersBorder: true },
   'openai/widgetCSP': { connect_domains: CSP.connectDomains, resource_domains: CSP.resourceDomains },

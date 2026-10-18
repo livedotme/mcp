@@ -173,7 +173,8 @@ try {
   await test('a place by name (17 Oct, "Lanseria" landed in France): the best name match, airports and nature reserves as points, the asker\'s country first; two countries level with no hint: ask', async () => {
     const F = (n) => JSON.parse(fs.readFileSync(path.join(DIR, 'fixtures', 'photon', n + '.json'), 'utf8')).features, ZA = placeHint({ 'openai/locale': 'en-ZA' }), US = placeHint({ 'openai/userLocation': { country: 'US', latitude: 40.01, longitude: -105.27 } });
     for (const [n, q, cc, name] of [['lanseria', 'Lanseria', 'ZA', 'Lanseria International Airport'], ['fourways', 'Fourways', 'ZA', 'Fourways'], ['sandton', 'Sandton', 'ZA', 'Sandton'], ['durban-north', 'Durban North', 'ZA', 'Durban North'],
-      ['cradle-of-humankind', 'Cradle of Humankind', 'ZA', 'Maropeng Cradle of Humankind'], ['stellenbosch', 'Stellenbosch', 'ZA', 'Stellenbosch'], ['paris', 'Paris', 'FR', 'Paris'], ['boulder', 'Boulder', 'US', 'Boulder']]) {
+      ['cradle-of-humankind', 'Cradle of Humankind', 'ZA', 'Maropeng Cradle of Humankind'], ['stellenbosch', 'Stellenbosch', 'ZA', 'Stellenbosch'], ['paris', 'Paris', 'FR', 'Paris'], ['boulder', 'Boulder', 'US', 'Boulder'],
+      ['johannesburg', 'Johannesburg', 'ZA', 'Johannesburg'], ['durban', 'Durban', 'ZA', 'Durban'], ['london', 'London', 'GB', 'London']]) { // a big city beats an island, a village, a station or a smaller city of the same name (18 Oct)
       for (const h of [null, ZA]) { const r = rankPlaces(F(n), q, h); assert.ok(r && r.pick, `${q} (${h ? 'ZA' : 'no'} hint): ${JSON.stringify(r && r.ask)}`); assert.equal(r.pick.country, cc, `${q} (${h ? 'ZA' : 'no'} hint)`); assert.equal(r.pick.name, name, q); }
     }
     assert.equal(rankPlaces(F('boulder'), 'Boulder', US).pick.state, 'Colorado'); assert.equal(rankPlaces(F('lanseria'), 'Lanseria', placeHint({ 'openai/locale': 'fr-FR' })).pick.country, 'FR'); // someone in France means the one in France
@@ -582,6 +583,20 @@ try {
     const seenR = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).filter((x) => x.tool === 'route').pop(); assert.match(seenR.args.url, /Beanie_Run\.gpx/);
     const two = await call('plan_route', { gpx_files: [{ download_url: 'https://files.oaiusercontent.test/d2/day-2.gpx', file_id: 'f2', file_name: 'day-2.gpx' }, { download_url: 'https://files.oaiusercontent.test/d1/day-1.gpx', file_id: 'f1', file_name: 'day-1.gpx' }], start: '2026-10-19 06:00' });
     assert.equal(two.structuredContent.view, 'plan_route', two.content[0].text.slice(0, 200)); assert.deepEqual(two.structuredContent.files, ['day-1', 'day-2']); // ordered by the numbers in their names
+  });
+  await test('ChatGPT (18 Oct): a status line on every tool, the Apple mark inline, people\'s photos through livedot.me/p/photo (embeddable in the sandbox), never a follow-up message where tools can be called; loading states', async () => {
+    const tools = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools;
+    for (const t of tools) { assert.ok(t._meta['openai/toolInvocation/invoking'] && t._meta['openai/toolInvocation/invoked'], t.name); assert.ok(t._meta['openai/toolInvocation/invoking'].length <= 40, t.name); }
+    const by = (n2) => tools.find((x) => x.name === n2)._meta;
+    assert.equal(by('find_person')['openai/toolInvocation/invoking'], 'Finding them in the race…'); assert.equal(by('where_is')['openai/toolInvocation/invoked'], 'Live position ready');
+    assert.equal(by('plan_route')['openai/toolInvocation/invoking'], 'Reading your route and the weather…'); assert.equal(by('fly_route')['openai/toolInvocation/invoked'], 'Flyover ready');
+    const r = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: WURI } })).body.result.contents[0], h = r.text;
+    assert.ok(!/src="https:\/\/weatherkit/.test(h), 'the Apple mark is inline'); assert.match(h, /var AW_LT = 'data:image\/png;base64,/); assert.ok(!/src="https:\/\/windline\.tech\/img/.test(h), 'brand marks inline');
+    assert.match(h, /livedot\.me\/p\/photo\?u=/); assert.match(h, /crossorigin="anonymous"/); assert.ok(r._meta['openai/widgetCSP'].resource_domains.includes('https://livedot.me'));
+    assert.match(h, /if \(host\.canCall\(\)\) \{ b\.disabled = false;/); assert.ok(!/host\.message\('Where is/.test(h), 'no follow-up for a face'); assert.match(h, /class="spin"/); assert.match(h, /Still working…/); assert.match(h, /prefers-reduced-motion:reduce\)\{\.sk:after\{animation:none/);
+    const PH = await import('../../functions/p/photo.js'), ask = (u) => PH.onRequest({ request: new Request('https://livedot.me/p/photo?u=' + encodeURIComponent(u)) });
+    for (const u of ['https://evil.example/a.png', 'http://runfast.tech/img/demo/a00.png', 'https://runfast.tech.evil.example/a.png', 'not a link']) assert.equal((await ask(u)).status, 400, u);
+    const ok = await ask('https://runfast.tech/img/demo/a00.png'); assert.equal(ok.status, 200); assert.equal(ok.headers.get('cross-origin-resource-policy'), 'cross-origin'); assert.equal(ok.headers.get('access-control-allow-origin'), '*'); assert.match(ok.headers.get('content-type'), /^image\//);
   });
   await test('Smithery quality: every tool has a title, annotations, an outputSchema and described parameters', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 90, method: 'tools/list' })).body.result.tools;

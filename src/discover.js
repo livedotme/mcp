@@ -72,12 +72,23 @@ export const discoverTools = ({ READ_ONLY, uiMeta }) => [
 // reserve is a fine point; a bus stop or a bar barely counts), Photon's own order, and the asker's country or location when the host
 // says it (ChatGPT's openai/userLocation, else the locale's country). Two countries nearly level with no hint: ask which.
 const placeMemo = new Map();
-const MAJOR = new Set(['aerodrome', 'airport', 'nature_reserve', 'national_park', 'park', 'university', 'college', 'stadium', 'museum', 'attraction', 'mall', 'station', 'train_station', 'industrial', 'commercial', 'residential', 'retail', 'golf_course', 'sports_centre']);
+const MAJOR_KIND = new Set(['aerodrome', 'airport', 'nature_reserve', 'national_park', 'park', 'university', 'college', 'stadium', 'museum', 'attraction', 'mall', 'station', 'train_station', 'industrial', 'commercial', 'residential', 'retail', 'golf_course', 'sports_centre']);
 const MINOR = new Set(['bus_stop', 'stop', 'platform', 'bar', 'pub', 'cafe', 'restaurant', 'shop', 'post_office', 'school', 'motorway_junction', 'water', 'stream', 'lake', 'river']);
 /** Each country's middle, for Photon's bias when the host gives a country but no point. */
 const CENTRE = { ZA: [-29, 24.5], US: [39.5, -98.5], GB: [54, -2], IE: [53.2, -8], AU: [-25, 134], NZ: [-41, 174], CA: [56, -106], FR: [46.5, 2.5], DE: [51, 10], NL: [52.2, 5.3], BE: [50.6, 4.6],
   ES: [40, -3.7], PT: [39.5, -8], IT: [42.8, 12.5], CH: [46.8, 8.2], AT: [47.5, 14.5], SE: [62, 15], NO: [62, 10], DK: [56, 10], FI: [64, 26], PL: [52, 19.5], KE: [0, 38], NA: [-22, 17], BW: [-22, 24],
   ZW: [-19, 29.5], MZ: [-18, 35], LS: [-29.6, 28.2], SZ: [-26.5, 31.5], NG: [9, 8], GH: [7.9, -1], IN: [22, 79], SG: [1.35, 103.8], AE: [24, 54], JP: [36, 138], BR: [-10, -52], MX: [23, -102], AR: [-34, -64], CL: [-33, -71] };
+/** What a place is, as a weight (a city beats an island, a hamlet or a census boundary of the same name; Wes, 18 Oct: "Johannesburg" asked
+ *  about an island in Dubai) and as a class (only two of the same class, nearly level, are worth a question). */
+const CLASS = { city: ['city', 5], town: ['city', 4.5], municipality: ['city', 4], borough: ['city', 4], administrative: ['city', 4], suburb: ['suburb', 3.5], quarter: ['suburb', 3], neighbourhood: ['suburb', 3],
+  village: ['village', 3], district: ['village', 3], locality: ['village', 2.5], hamlet: ['village', 2], county: ['region', 2], state: ['region', 2], region: ['region', 2], island: ['other', 1.5] };
+/** The world's big cities and capitals, by name and country: what Photon doesn't say (how big a place is) when two cities share a name. */
+const MAJOR = new Set(('london gb,paris fr,johannesburg za,cape town za,durban za,pretoria za,port elizabeth za,gqeberha za,bloemfontein za,sydney au,melbourne au,brisbane au,perth au,adelaide au,auckland nz,wellington nz,christchurch nz,'
+  + 'new york us,los angeles us,chicago us,boston us,san francisco us,washington us,seattle us,denver us,houston us,dallas us,austin us,miami us,atlanta us,philadelphia us,toronto ca,vancouver ca,montreal ca,calgary ca,ottawa ca,'
+  + 'berlin de,munich de,hamburg de,frankfurt de,cologne de,madrid es,barcelona es,valencia es,seville es,lisbon pt,porto pt,rome it,milan it,florence it,amsterdam nl,rotterdam nl,brussels be,dublin ie,edinburgh gb,manchester gb,birmingham gb,glasgow gb,'
+  + 'nairobi ke,lagos ng,cairo eg,dubai ae,abu dhabi ae,tokyo jp,osaka jp,singapore sg,hong kong hk,mumbai in,delhi in,bangalore in,sao paulo br,rio de janeiro br,buenos aires ar,mexico city mx,santiago cl,lima pe,bogota co,'
+  + 'vienna at,zurich ch,geneva ch,copenhagen dk,stockholm se,oslo no,helsinki fi,athens gr,istanbul tr,warsaw pl,prague cz,budapest hu,seoul kr,bangkok th,kuala lumpur my,jakarta id,manila ph,beijing cn,shanghai cn,'
+  + 'windhoek na,gaborone bw,harare zw,maputo mz,kigali rw,accra gh,addis ababa et,casablanca ma,tel aviv il,riyadh sa,doha qa').split(','));
 const pw = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').split(/[^a-z0-9]+/).filter(Boolean);
 /** Where the asker is, as the host says it: { country, lat, lon } (lat and lon from openai/userLocation, else the country's middle). */
 export function placeHint(meta) {
@@ -95,19 +106,21 @@ export function rankPlaces(features, q, hint) {
     const name = p.name || p.city || '', nw = pw(name), ns = nw.join(' '), value = p.osm_value || '', key = p.osm_key || '';
     const m = !qs ? 0 : ns === qs ? 3 : (' ' + ns + ' ').includes(' ' + qs + ' ') ? 2 : qw.every((w) => nw.some((y) => y.startsWith(w)) || pw(p.city).some((y) => y.startsWith(w))) ? 1 : 0;
     const isPlace = key === 'place' || key === 'boundary' || PLACE.has(value) || p.type === 'city' || p.type === 'district' || p.type === 'locality' && key === 'place';
-    const kind = isPlace ? 3 : MAJOR.has(value) || key === 'aeroway' || key === 'leisure' || key === 'tourism' ? 2 : key === 'highway' && !MINOR.has(value) ? 1 : MINOR.has(value) ? 0 : 1;
-    return { name, city: p.city || '', state: p.state || '', country: (p.countrycode || '').toUpperCase(), countryName: p.country || '', lat: +c[1], lon: +c[0], value, key, isPlace, m, kind, i, order: 2 * (1 - (0.9 * i) / Math.max(1, arr.length)) }; // Photon's order is its sense of importance
+    const cl = key === 'boundary' && value !== 'administrative' ? ['other', 1] : CLASS[value] || (isPlace ? ['village', 3] : null);
+    const kind = cl ? cl[1] : MAJOR_KIND.has(value) || key === 'aeroway' || key === 'leisure' || key === 'tourism' ? 2 : key === 'highway' && !MINOR.has(value) ? 1 : MINOR.has(value) ? 0 : 1;
+    const big = cl && cl[0] === 'city' && MAJOR.has(pw(name).join(' ') + ' ' + String(p.countrycode || '').toLowerCase()) ? 1.5 : 0;
+    return { name, city: p.city || '', state: p.state || '', country: (p.countrycode || '').toUpperCase(), countryName: p.country || '', lat: +c[1], lon: +c[0], value, key, isPlace, m, kind, big, cls: cl ? cl[0] : 'poi', i, order: 2 * (1 - (0.9 * i) / Math.max(1, arr.length)) }; // Photon's order is its sense of importance
   }).filter((x) => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
   if (!all.length) return null;
   const matched = all.filter((x) => x.m > 0), list = matched.length ? matched : all.filter((x) => x.isPlace).concat(all.filter((x) => !x.isPlace)).slice(0, 1); // no name matches: Photon's best place, as before (a typo)
   for (const x of list) {
-    x.s = x.m + x.kind + (x.isPlace && x.value === 'city' ? 0.5 : 0) + x.order;
+    x.s = x.m + x.kind + x.big + x.order;
     if (hint && hint.country && x.country === hint.country) x.s += 2;
     if (hint && hint.exact && hkm([hint.lat, hint.lon], [x.lat, x.lon]) < 300) x.s += 1;
   }
   list.sort((a, b) => b.s - a.s || a.i - b.i);
   const a = list[0], b = list.find((x) => x.country !== a.country);
-  if (!hint && b && b.i <= 1 && a.s - b.s < 1) return { ask: [a, b].map(labelOf), candidates: [a, b] }; // Photon's own top two, in two countries, nearly level
+  if (!hint && b && b.cls === a.cls && a.cls !== 'poi' && a.s - b.s < 1) return { ask: [a, b].map(labelOf), candidates: [a, b] }; // Photon's own top two, in two countries, nearly level
   return { pick: a };
 }
 function displayName(x, q) {

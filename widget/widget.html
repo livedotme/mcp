@@ -142,7 +142,24 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .sec .cnt{float:right;color:var(--faint);font-weight:600}
 .cttl span{white-space:normal}
 .clubmap .pdot{width:13px;height:13px;border-width:2.5px}.clubmap .pdot.lead{width:17px;height:17px}
-@media (prefers-reduced-motion:reduce){.dot,.pill.live i{animation:none}}
+/* waiting (Wes, 18 Oct: "Stripe-level"): a spinner where the chevron was, a skeleton of the next card, a 150 ms fade in; still when the user asks for less motion */
+.spin{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--acc);animation:spin .7s linear infinite;display:inline-block}
+.btn .spin{width:14px;height:14px;border-color:rgba(255,255,255,.35);border-top-color:#fff}:root[data-theme="dark"] .btn:not(.appbtn) .spin{border-color:rgba(11,27,43,.25);border-top-color:#0B1B2B}
+.mem .spin{position:absolute;top:30px;left:50%;margin-left:-8px}.mem{position:relative}.mem.busy .av{opacity:.5}
+@keyframes spin{to{transform:rotate(360deg)}}
+.row.busy,.mem.busy{pointer-events:none}
+.fadein{animation:fadein .15s ease-out}@keyframes fadein{from{opacity:0}to{opacity:1}}
+.sk{background:var(--soft);border-radius:8px;position:relative;overflow:hidden}
+.sk:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:shimmer 1.3s infinite}
+:root[data-theme="dark"] .sk:after{background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent)}
+@keyframes shimmer{to{transform:translateX(100%)}}
+.skhd{display:flex;align-items:center;gap:12px;padding:16px 18px 14px}.skhd .c{width:34px;height:34px;border-radius:50%}.skhd .t{flex:1}.skhd .t i{display:block;height:14px;width:55%;margin-bottom:8px}.skhd .t i+i{width:35%;height:11px;margin:0}
+.skmap{height:300px;border-radius:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.skstats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px 16px}.skstats i{height:46px}
+.skahead{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:0 16px 16px}.skahead i{height:58px;border-radius:12px}
+.skmsg{margin:0;padding:0 18px 16px;color:var(--muted);font-size:13px;min-height:18px}
+.errc .hint{padding:14px 18px 4px}.errc .ft{border-top:0}
+@media (prefers-reduced-motion:reduce){.sk:after{animation:none;display:none}.spin{animation-duration:2s}.fadein{animation:none}.dot,.pill.live i{animation:none}}
 @media (max-width:420px){.map{height:240px}.ttl b{font-size:16px}.stat{padding:10px 12px}}
 </style>
 </head>
@@ -169,8 +186,11 @@ function seps(el) {
 }
 /** A person's avatar: their profile picture (from the apps' own hosts), with their initials underneath for when it doesn't load. */
 function initialsOf(n) { return String(n || '').replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0] || ''; }).join('').slice(0, 2).toUpperCase(); }
+/** An app's picture through livedot.me/p/photo, which says it may be embedded (ChatGPT's sandbox loads a cross-origin image only then). */
+var PICS = /^https:\/\/(windline\.tech|runfast\.tech|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//;
+function pic(u) { return 'https://livedot.me/p/photo?u=' + encodeURIComponent(u); }
 function avatarOf(name, photo, bg, inner) {
-  return '<span class="av"' + (bg ? ' style="background:' + bg + '"' : '') + '>' + esc(inner != null ? inner : initialsOf(name)) + (photo && /^https:\/\/(windline|runfast)\.tech\//.test(photo) ? '<img src="' + esc(photo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
+  return '<span class="av"' + (bg ? ' style="background:' + bg + '"' : '') + '>' + esc(inner != null ? inner : initialsOf(name)) + (photo && /^https:\/\/(windline|runfast)\.tech\//.test(photo) ? '<img crossorigin="anonymous" src="' + esc(pic(photo)) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
 }
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 var MARK = '<svg class="mark" viewBox="20 20 60 60" aria-hidden="true"><circle cx="50" cy="50" r="26" fill="none" stroke="#2FD39B" stroke-width="5" stroke-linecap="round" stroke-dasharray="128 35.4" transform="rotate(-20 50 50)" opacity=".55"/><circle cx="50" cy="50" r="13" fill="#2FD39B"/></svg>';
@@ -199,7 +219,11 @@ window.addEventListener('message', function (e) {
 });
 function context(c) { if (c && c.theme) theme(c.theme); }
 function theme(t) { document.documentElement.setAttribute('data-theme', t === 'dark' ? 'dark' : 'light'); }
+/** The view in a tool's answer, however the host hands it back (_meta, meta). */
+function viewOf(r) { var m = r && (r._meta || r.meta || r.metadata); return (m && m['livedot/view']) || null; }
 var host = {
+  /** Can this host call a tool from the card? Then it never gets a follow-up message from us (Wes, 18 Oct: never both). */
+  canCall: function () { return OA ? typeof OA.callTool === 'function' : ready; },
   call: function (name, args) {
     if (OA && typeof OA.callTool === 'function') return new Promise(function (ok) { ok(OA.callTool(name, args)); }).then(function (r) { return r && (r._meta || r.structuredContent) ? r : { _meta: r && r.meta, structuredContent: r && r.structuredContent }; });
     return request('tools/call', { name: name, arguments: args });
@@ -219,6 +243,32 @@ var host = {
   }
 };
 function fromResult(r) { var v = r && r._meta && r._meta['livedot/view']; if (v) { STACK = []; show(v); } else if (r && r.content) message(r.content.map(function (c) { return c.text || ''; }).join('\n')); }
+/** A card's action that calls a tool (a picker row, a face on the team card): a spinner where the chevron was, the rest readable; after a
+ *  moment a skeleton of the next card; the card fades in when it comes; "Still working…" after 12 s; a plain error with Try again. */
+var ACT = 0;
+function act(o) {
+  var el = o.el, my = ++ACT, from = V, chev = el && el.querySelector('.chev');
+  if (el) { el.classList.add('busy'); el.setAttribute('aria-busy', 'true'); var sp = document.createElement('span'); sp.className = 'spin'; sp.setAttribute('aria-hidden', 'true'); if (chev) chev.replaceWith(sp); else el.appendChild(sp); }
+  var skT = setTimeout(function () { if (my === ACT) skeleton(o.kind || 'person'); }, 250), slowT = setTimeout(function () { var m = document.getElementById('lv-skmsg'); if (my === ACT && m) m.textContent = 'Still working…'; }, 12000);
+  host.call(o.tool, o.args).then(function (r) {
+    clearTimeout(skT); clearTimeout(slowT); if (my !== ACT) return; var nv = viewOf(r);
+    if (!nv) return failed(o, from, 'That didn’t load. Try again.');
+    if (from) STACK.push(from); show(nv); root.firstElementChild && root.firstElementChild.classList.add('fadein');
+  }).catch(function () { clearTimeout(skT); clearTimeout(slowT); if (my === ACT) failed(o, from, 'That didn’t load. Try again.'); });
+}
+function skeleton(kind) {
+  stopLive();
+  var h = '<div class="card" aria-busy="true" aria-label="Loading"><div class="skhd"><i class="sk c"></i><span class="t"><i class="sk"></i><i class="sk"></i></span></div>'
+    + '<div class="sk skmap"></div><div class="skstats"><i class="sk"></i><i class="sk"></i><i class="sk"></i></div>' + (kind === 'person' ? '<div class="skahead"><i class="sk"></i><i class="sk"></i><i class="sk"></i></div>' : '')
+    + '<p class="skmsg" id="lv-skmsg" role="status"></p></div>';
+  root.innerHTML = h; host.size();
+}
+function failed(o, from, msg) {
+  root.innerHTML = '<div class="card errc fadein">' + head('livedot', '', '', !!from, null) + '<p class="hint" role="alert">' + esc(msg) + '</p><div class="ft"><button type="button" class="btn appbtn" id="again">Try again</button></div></div>';
+  var bk = root.querySelector('[data-back]'); if (bk) bk.addEventListener('click', function () { show(from); });
+  document.getElementById('again').addEventListener('click', function () { if (from) { V = from; } act({ tool: o.tool, args: o.args, kind: o.kind }); });
+  host.size();
+}
 // (the host starts the widget at the end of this script, once every function and value above and below is defined: boot())
 if (window.LD_VIEW) show(window.LD_VIEW);
 if ('ResizeObserver' in window) new ResizeObserver(function () { host.size(); }).observe(document.body);
@@ -267,9 +317,11 @@ function mapView(v) {
 
 /** The line under the card: when the position and the forecast were updated, and whose weather it is (Apple's mark, linked to its
  *  legal page, as WeatherKit asks; ERA5 history credits Copernicus). */
+/** Apple's Weather mark (its own artwork from weatherkit.apple.com/assets/branding, inline: no image host for the sandbox to block). */
+var AW_LT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOcAAAAqCAYAAABIgkxKAAAACXBIWXMAAAWxAAAFsQGS3qTBAAAE9GlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4yLWMwMDAgNzkuNTY2ZWJjNWI0LCAyMDIyLzA1LzA5LTA4OjI1OjU1ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjMuNCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjItMDktMDFUMTE6MjA6MDMtMDQ6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDIyLTA5LTAxVDE1OjM1OjI4LTA0OjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDIyLTA5LTAxVDE1OjM1OjI4LTA0OjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpjMzMyNWJlMi04NjhmLTRmYzctYTRiMC01OGUxNDIzZDc4NzYiIHhtcE1NOkRvY3VtZW50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', AW_DK = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAOcAAAAqCAYAAABIgkxKAAAACXBIWXMAAAWxAAAFsQGS3qTBAAAE9GlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4yLWMwMDAgNzkuNTY2ZWJjNWI0LCAyMDIyLzA1LzA5LTA4OjI1OjU1ICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8vbnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgMjMuNCAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMjItMDktMDFUMTE6MjA6NTgtMDQ6MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDIyLTA5LTAxVDE1OjM1OjU1LTA0OjAwIiB4bXA6TWV0YWRhdGFEYXRlPSIyMDIyLTA5LTAxVDE1OjM1OjU1LTA0OjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDpjMmFiNWIzZC1lY2RmLTQ4MTQtYmYxYS1jNzAxNWEzNjVkZDYiIHhtcE1NOkRvY3VtZW50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';
 function metaHtml(v) {
   var t = String(v.updated || ''), legal = v.appleLegal || 'https://weatherkit.apple.com/legal-attribution.html';
-  var mark = '<button type="button" class="aw" data-open="' + esc(legal) + '" aria-label="Apple Weather: data sources"><img class="lt" src="https://weatherkit.apple.com/assets/branding/en/Apple_Weather_blk_en_3X_090122.png" alt="Apple Weather" height="13"><img class="dk" src="https://weatherkit.apple.com/assets/branding/en/Apple_Weather_wht_en_3X_090122.png" alt="" height="13"></button>';
+  var mark = '<button type="button" class="aw" data-open="' + esc(legal) + '" aria-label="Apple Weather: data sources"><img class="lt" src="' + AW_LT + '" alt="Apple Weather" height="13"><img class="dk" src="' + AW_DK + '" alt="" height="13"></button>';
   if (/Apple Weather/.test(t)) return t.split(' · ').map(function (x) { return x === 'Apple Weather' ? mark : esc(x); }).join(' · ');
   if (/Copernicus ERA5/.test(t)) return esc(t) + ' · Contains modified Copernicus Climate Change Service information';
   return esc(t);
@@ -292,7 +344,7 @@ function leadersHtml(v) {
 // ---------------------------------------------------------------- a club in a race (Wes, 17 Oct: "a picture of all their people, and clicking one shows that person")
 function clubMark(c, v) {
   var bg = (c && c.colour) || (v.app === 'runfast' ? '#0E1B26' : '#0A2540'), fg = (c && c.accent) || '#fff';
-  var logo = c && c.logo && /^https:\/\/(windline\.tech|runfast\.tech|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(c.logo) ? '<img src="' + esc(c.logo) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '';
+  var logo = c && c.logo && /^https:\/\/(windline\.tech|runfast\.tech|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//.test(c.logo) ? '<img crossorigin="anonymous" src="' + esc(pic(c.logo)) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '';
   return '<span class="cmark" style="background:' + esc(bg) + ';color:' + esc(fg) + '" aria-hidden="true">' + esc((c && c.initials) || initialsOf(v.name)) + logo + '</span>';
 }
 function teamHtml(v) {
@@ -318,9 +370,8 @@ function clubView(v) {
 function wireTeam() {
   var box = document.getElementById('lv-team'); if (!box) return;
   box.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-pid]'); if (!b || !V || V.kind !== 'club') return; b.classList.add('busy'); var from = V;
-    host.call('where_is', { person: b.getAttribute('data-pid'), units: V.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; b.classList.remove('busy'); if (nv && V === from) { STACK.push(from); show(nv); } })
-      .catch(function () { b.classList.remove('busy'); var p = b.getAttribute('aria-label') || ''; host.message('Where is ' + p.split(',')[0] + '?').catch(function () { /* */ }); });
+    var b = e.target.closest('[data-pid]'); if (!b || !V || V.kind !== 'club' || b.classList.contains('busy')) return;
+    act({ el: b, tool: 'where_is', args: { person: b.getAttribute('data-pid'), units: V.units }, kind: 'person' });
   });
 }
 
@@ -339,9 +390,9 @@ function agoWords(ms) { var s = Math.round(ms / 1000); return s < 10 ? 'Updated 
 function tickLive() { var L = LIVE, el = document.getElementById('lv-ago'); if (!L || L.seq !== seq) return stopLive(); if (el) { el.textContent = agoWords(Date.now() - L.at); el.className = 'live'; } }
 function pollLive() {
   var L = LIVE; if (!L || L.busy) return; if (L.seq !== seq || Date.now() > L.until) return stopLive(); if (document.visibilityState && document.visibilityState !== 'visible') return;
-  L.busy = true;
+  L.busy = true; var ago = document.getElementById('lv-ago'); if (ago) ago.textContent = 'Updating…';
   host.call(L.tool, L.args).then(function (r) {
-    L.busy = false; var nv = r && r._meta && r._meta['livedot/view']; if (!nv || LIVE !== L || !V || nv.kind !== V.kind) return;
+    L.busy = false; var nv = viewOf(r); if (!nv) tickLive(); if (!nv || LIVE !== L || !V || nv.kind !== V.kind) return;
     L.at = Date.now(); updateLive(nv); tickLive(); if (nv.status === 'finished' || /^(Finished|Stopped)$/.test(nv.statusWord || '')) stopLive();
   }).catch(function () { L.busy = false; stopLive(); noCalls(); });
 }
@@ -375,8 +426,8 @@ function picker(v) {
   q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { var s = q.value.trim().toLowerCase(); rows(v.rows.filter(function (r) { return !s || r.name.toLowerCase().split(/\s+/).some(function (w) { return w.indexOf(s) === 0; }); })); }, 80); });
   q.addEventListener('keydown', function (e) {
     if (e.key !== 'Enter') return; e.preventDefault(); var s = q.value.trim(); if (!s) return;
-    var box = document.getElementById('rows'); box.innerHTML = '<li class="empty">Searching…</li>';
-    host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; if (nv && nv.kind === 'picker') show(nv); else if (nv && nv.kind !== 'none') { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
+    var box = document.getElementById('rows'); box.innerHTML = '<li class="empty"><span class="spin" aria-hidden="true"></span> Searching…</li>';
+    host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = viewOf(r); if (nv && nv.kind === 'picker') show(nv); else if (nv && nv.kind !== 'none') { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
       .catch(function () { box.innerHTML = '<li class="empty">That didn’t load. Try again.</li>'; });
   });
   host.size();
@@ -391,7 +442,7 @@ function nearList(v) {
       + '<span class="sub">' + esc(x.sub) + '</span>' + (x.line ? '<span class="ln">' + esc(x.line) + '</span>' : '')
       + (x.tags && x.tags.length ? '<span class="tags">' + x.tags.map(function (t) { return '<span' + (/^(Beginners|Open to anyone)/.test(t) ? ' class="yes"' : '') + '>' + esc(t) + '</span>'; }).join('') + '</span>' : '')
       + (x.next ? '<span class="nx"><i class="' + esc(x.weather || '') + '"></i>' + esc(x.next) + '</span>' : '')
-      + (x.links && /^https:\/\//i.test(String(x.links.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.links.url) + '">' + (bioHost(x.links.url) ? '<img src="https://windline.tech/img/sponsors/biotree.png" alt="" width="14" height="14">' : '') + 'Club links</button>' : '') + '</span>'
+      + (x.links && /^https:\/\//i.test(String(x.links.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.links.url) + '">' + (bioHost(x.links.url) ? '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAqCAYAAADFw8lbAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAKqADAAQAAAABAAAAKgAAAADUGqULAAAC6klEQVRYCe2X70tTURjHv3f3zulm3U0tl9kkKyWx5ZtKjcI07EUgRBBW9Kai1xFE/0oQIb2P3hQUYWn1amGCP3JRJmiZS1Yz9iN1u1vnuTUxdb/OuS5Gey7j/jjPOeez732e85wrJZihAMxUAIw6YhHU6DdVVLSoqNEKGD3e/xOjX3/MI7IUMVrAdeMp655keBBaCmHo4zAiy2HMBXwYmR7F1c7LcLsOZOgp1pw76GIInkkPtLiGaf8n5KsC5xyjTtWJWz03ceHoeSgmGZIkplS2vXMGTQ4c1aJIsCNfxg2aL8DkPAUDmnMyJf/h6rOE34Ea02LwB/0Is+WqRDGjsrwSVot1tSv3tTAoQWoJDS+9r/BsfACBcADL2rK+GlSUV6Clzo1T7m7YbXZuSOooDKrICu57HqDUXIqOpuNwVbkQY4n29rMXgxMv8HS0X7++1nUFtRW13LDCoPS692yvZ8tVLyxmywpIY00j6qt34+5AH3wLPvQN3sON09dhs9hWfHK5EE4mWqIO7z30F2QSoKXuINr3tbJbCTOsOFB48JowKE1MVSqVtTa06oklyzLeTA2D1l8eMwQ03cQ77E44bA6mqQR/6BsCoUA695Rtmw5KSaZat+qrQDQWRZDtFXhs00EJimAplvUjEefhRF5AtT9wiknhLgCbDkqJFvwZ1FVUrSqoCPCYIaDp9qRUUulHwE079+th8E9ACTIQXkg5t2fyNUIsgdQyFSeaO1L6ZWoQVjTO4m9oamjDtfT93Af0jz+HzDbYZ4+cgVOtzsSTsp27hJKSVD6p+kzMenG7/w663SexbUsVFqNLGJsZw8PhR+wLQMKlYxfR3tCWEiKbBolNyLVNn/3+BQMTg+htOwfv7Ds8HnmCefZFKkkmkMqU4c27mtDV3IkaR002LGl9uEE3GpW2eJThimxm1ciOspKyjdy4nhkKykWQZSfhZMpyHmG3IqiwhGsGKCq6RhDh26KiwhKuGaBgFP0F4Ub4fC0g3MwAAAAASUVORK5CYII=" alt="" width="14" height="14">' : '') + 'Club links</button>' : '') + '</span>'
       + '<button type="button" class="btn go" data-open="' + esc(x.button.url) + '">' + esc(x.button.label) + '</button></li>';
   }).join('') + '</ul>';
   h += '<div class="ft">' + (v.add ? '<button type="button" class="btn sec2" data-open="' + esc(v.add.url) + '">' + esc(v.add.label) + '</button>' : '') + '<span class="meta">' + (v.list === 'events' ? 'Weather: the forecast within 10 days, typical beyond.' : 'What each club chose to share on its page.') + (v.updated ? ' ' + metaHtml(v) : '') + '</span></div>';
@@ -418,7 +469,7 @@ function wireTap() {
   var wait = function (ms, n) { b.disabled = true; b.textContent = n ? 'Taps sent ✓ (' + n + ')' : t.club ? 'Taps sent ✓' : 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
   var key = t.tour || t.club || t.person, since = Date.now() - (TAP_AT[key] || 0); if (since < 60e3) wait(60e3 - since);
   b.addEventListener('click', function () {
-    if (b.disabled) return; b.disabled = true; b.textContent = 'Sending…';
+    if (b.disabled) return; b.disabled = true; b.innerHTML = '<span class="spin" aria-hidden="true"></span>Sending…';
     var old = b.parentNode.querySelector('.tapwhy'); if (old) old.remove();
     var say = function (msg) { var p = document.createElement('p'); p.className = 'tapwhy'; p.textContent = msg; b.parentNode.appendChild(p); host.size(); };
     host.call('tap_on_the_back', t.tour ? { tour: t.tour } : t.club ? { club: t.club, event: t.event } : { person: t.person }).then(function (r) {
@@ -426,6 +477,7 @@ function wireTap() {
       if (sc && sc.sent) { TAP_AT[key] = Date.now(); wait(60e3, sc.taps_sent || 0); return; }
       b.disabled = false; b.textContent = t.label; say((sc && (sc.message || sc.error)) || 'The tap didn’t go through. Try again in a moment.');
     }).catch(function () {
+      if (host.canCall()) { b.disabled = false; b.textContent = t.label; say('The tap didn’t go through. Try again in a moment.'); return; } // a host that calls tools never also gets a message
       host.message(t.tour ? 'Give the tour a tap on the back' : t.club ? 'Give the team a tap on the back' : (t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[key] = Date.now(); wait(60e3); })
         .catch(function () { b.disabled = false; b.textContent = t.label; say(t.tour ? 'Ask in the chat: “Give the tour a tap on the back”.' : t.club ? 'Ask in the chat: “Give the team a tap on the back”.' : 'Ask in the chat: “Give ' + t.first + ' a tap on the back”.'); });
     });
@@ -440,9 +492,8 @@ function wire() {
   root.querySelectorAll('[data-back]').forEach(function (b) { b.addEventListener('click', function () { var p = STACK.pop(); if (p) show(p); }); });
   var box = document.getElementById('rows');
   if (box && V && V.kind === 'picker') box.addEventListener('click', function (e) {
-    var b = e.target.closest('[data-id]'); if (!b) return; b.classList.add('busy'); var from = V;
-    host.call('where_is', { person: b.getAttribute('data-id'), units: V.units }).then(function (r) { var nv = r && r._meta && r._meta['livedot/view']; b.classList.remove('busy'); if (nv) { STACK.push(from); show(nv); } })
-      .catch(function () { b.classList.remove('busy'); });
+    var b = e.target.closest('[data-id]'); if (!b || b.classList.contains('busy')) return;
+    act({ el: b, tool: 'where_is', args: { person: b.getAttribute('data-id'), units: V.units }, kind: 'person' }); // the person, in this card (never a chat message)
   });
 }
 
