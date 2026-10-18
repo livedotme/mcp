@@ -142,6 +142,10 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .sec .cnt{float:right;color:var(--faint);font-weight:600}
 .cttl span{white-space:normal}
 .clubmap .pdot{width:13px;height:13px;border-width:2.5px}.clubmap .pdot.lead{width:17px;height:17px}
+/* a team map's dots say who they are (Wes, 18 Oct: "which runner is which?"): the name and km on hover or focus; a tap opens their card */
+.pdot[data-pid]{cursor:pointer}.pdot[data-pid]:hover,.pdot[data-pid]:focus-visible{z-index:9!important;outline:none;box-shadow:0 0 0 3px rgba(10,37,64,.25),0 1px 3px rgba(11,27,43,.35)}
+.pdot .dlab{position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);background:#0A2540;color:#fff;font:600 12px/1 var(--font);padding:6px 8px;border-radius:6px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
+.pdot:hover .dlab,.pdot:focus-visible .dlab{opacity:1}@media (prefers-reduced-motion:reduce){.pdot .dlab{transition:none}}
 /* waiting (Wes, 18 Oct: "Stripe-level"): a spinner where the chevron was, a skeleton of the next card, a 150 ms fade in; still when the user asks for less motion */
 .spin{width:16px;height:16px;flex:none;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--acc);animation:spin .7s linear infinite;display:inline-block}
 .btn .spin{width:14px;height:14px;border-color:rgba(255,255,255,.35);border-top-color:#fff}:root[data-theme="dark"] .btn:not(.appbtn) .spin{border-color:rgba(11,27,43,.25);border-top-color:#0B1B2B}
@@ -387,6 +391,21 @@ function clubView(v) {
   h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
   root.innerHTML = h; seps(root); wire(); wireTeam(); drawSvg(v); drawGl(v, seq); host.size(); startLive(v);
 }
+/** A dot on a team map: plain, or (with an id and label) a button with the name and km on hover; a tap opens their card, the face's spinner showing. */
+function dotMk(mk, d) {
+  var m = mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2), el = m.getElement();
+  if (!d.id || !d.label) return m;
+  el.setAttribute('data-pid', d.id); el.setAttribute('role', 'button'); el.setAttribute('tabindex', '0'); el.setAttribute('aria-label', d.label);
+  var lab = document.createElement('span'); lab.className = 'dlab'; lab.setAttribute('aria-hidden', 'true'); lab.textContent = d.label; el.appendChild(lab);
+  var go = function (e) {
+    e.stopPropagation(); if (!V || V.kind !== 'club') return;
+    var face = null; document.querySelectorAll('#lv-team [data-pid]').forEach(function (b) { if (b.getAttribute('data-pid') === d.id) face = b; });
+    if (face && face.classList.contains('busy')) return;
+    act({ el: face, tool: 'where_is', args: { person: d.id, units: V.units }, kind: 'person' });
+  };
+  el.addEventListener('click', go); el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
+  return m;
+}
 function wireTeam() {
   var box = document.getElementById('lv-team'); if (!box) return;
   box.addEventListener('click', function (e) {
@@ -430,7 +449,7 @@ function updateLive(nv) {
     var map = CUR.map;
     if (nv.dot && CUR.dot) { CUR.dot.setLngLat([nv.dot.lon, nv.dot.lat]); try { if (!map.getBounds().contains([nv.dot.lon, nv.dot.lat])) map.easeTo({ center: [nv.dot.lon, nv.dot.lat], duration: 600 }); } catch (e) { /* */ } }
     if (nv.ghost && CUR.ghost) CUR.ghost.setLngLat([nv.ghost.lon, nv.ghost.lat]);
-    if (nv.dots) { CUR.dots.forEach(function (m) { m.remove(); }); CUR.dots = nv.dots.map(function (d) { return CUR.mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); }); }
+    if (nv.dots) { CUR.dots.forEach(function (m) { m.remove(); }); CUR.dots = nv.dots.map(function (d) { return dotMk(CUR.mk, d); }); }
   }
   host.size();
 }
@@ -542,7 +561,7 @@ function drawSvg(v) {
   }
   if (v.ghost) { var g = P(v.ghost.lat, v.ghost.lon); out += '<circle cx="' + g[0] + '" cy="' + g[1] + '" r="6" fill="#fff" fill-opacity=".8" stroke="#0B1B2B" stroke-width="1.6" stroke-dasharray="3 2"/>'; }
   var acc = v.sport === 'run' ? '#EE7A1F' : '#635BFF';
-  (v.dots || []).forEach(function (d) { var q = P(d.lat, d.lon); out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + (d.lead ? 6 : 4) + '" fill="' + acc + '" stroke="#fff" stroke-width="2"/>'; });
+  (v.dots || []).forEach(function (d) { var q = P(d.lat, d.lon); out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="' + (d.lead ? 6 : 4) + '" fill="' + acc + '" stroke="#fff" stroke-width="2">' + (d.label ? '<title>' + esc(d.label) + '</title>' : '') + '</circle>'; });
   if (v.dot) { var q = P(v.dot.lat, v.dot.lon); out += '<circle cx="' + q[0] + '" cy="' + q[1] + '" r="16" fill="' + acc + '" opacity=".18"/><circle cx="' + q[0] + '" cy="' + q[1] + '" r="9" fill="' + acc + '" stroke="#fff" stroke-width="3"/>'; }
   svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h); svg.innerHTML = out;
 }
@@ -587,7 +606,7 @@ function drawGl(v, my) {
         map.addLayer({ id: 'c-line', type: 'line', source: 'c', layout: round, paint: { 'line-gradient': st, 'line-width': ['interpolate', ['linear'], ['zoom'], 8, 3, 14, 6] } });
       }
       var mk = function (cls, lon, lat, z) { var d = document.createElement('div'); d.className = cls; var m = new gl.Marker({ element: d }).setLngLat([lon, lat]).addTo(map); m.getElement().style.zIndex = z; return m; };
-      CUR = { seq: my, map: map, mk: mk, ghost: v.ghost ? mk('ghost', v.ghost.lon, v.ghost.lat, 1) : null, dots: (v.dots || []).map(function (d) { return mk('pdot' + (d.lead ? ' lead' : ''), d.lon, d.lat, d.lead ? 3 : 2); }), dot: v.dot ? mk('dot', v.dot.lon, v.dot.lat, 4) : null };
+      CUR = { seq: my, map: map, mk: mk, ghost: v.ghost ? mk('ghost', v.ghost.lon, v.ghost.lat, 1) : null, dots: (v.dots || []).map(function (d) { return dotMk(mk, d); }), dot: v.dot ? mk('dot', v.dot.lon, v.dot.lat, 4) : null };
       map.once('idle', function () { wrap.classList.add('gl-on'); if (v.kind === 'fly') flyOver(map, gl, v); });
     });
   }).catch(function () { /* no MapLibre or no basemap here: the plain map is the map */ });

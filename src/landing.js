@@ -11,7 +11,7 @@ const EXAMPLES = [
   { q: 'What’s Alistair’s Durban Tour 2027 route? Give me the GPX files.', a: 'Two days, 95 km: Pietermaritzburg to Hillcrest, then Hillcrest to Durban, with the climbing, start times and 10 years of weather on the dates. The organiser shares the route files: a GPX link for each day.', img: 'tour-route', alt: 'A cycling tour’s two days on a map, each rated for the weather, with a Route files button' },
 ];
 const TOOLS = [
-  ['find_person', 'Finds someone racing live by name, livedot handle or follow link. One clear match answers at once; several become a picker, and the assistant asks one short question instead of guessing.'],
+  ['find_person', 'Finds someone live (in a race, or on a ride or run of their own) by name, livedot handle or follow link. One clear match answers at once; several become a picker, and the assistant asks one short question instead of guessing.'],
   ['where_is', 'Where they are now: km and mile, time against their goal, pace, finish time, the weather there and on the road ahead, and Follow live.'],
   ['event_status', 'How a live race is going: how long it’s been under way, how many are out, who’s in front.'],
   ['club_in_race', 'How a club or team is doing in a live race: each of its people on the club’s public live map, with km and goal time; tap a face for their card.'],

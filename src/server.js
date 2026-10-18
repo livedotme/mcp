@@ -33,12 +33,12 @@ const uiMeta = (invoking, invoked) => ({
 export const TOOLS = [
   {
     name: 'find_person',
-    title: 'Find someone racing live',
-    description: 'Find a person in a live cycling or running race tracked on livedot (Windline for cycling, RunFast for running), e.g. "Where\'s Megan in the Comrades?" or "Is Thandi racing?". '
+    title: 'Find someone live',
+    description: 'Find a person who is live on livedot (Windline for cycling, RunFast for running): in a race, e.g. "Where\'s Megan in the Comrades?" or "Is Thandi racing?", or out on a ride or run of their own, e.g. "Is Wes out training? livedot.me/wes". '
       + 'Pass what the user gave, as they wrote it: a name, a livedot handle (@megan, livedot.me/megan) or a follow link, and the race if they named one. '
       + 'One clear match (a handle, or a full name that fits one person) returns the live answer at once: where they are, time against their goal, finish time, the weather there, and a live map. '
       + 'Several matches return the 5 most likely and the total. Then ask the user ONE short question (surname or initial, bib or club) and call again with it, or call where_is with the person id they pick. Never guess between people. '
-      + 'Only people who chose to be findable, on public races, can be found.',
+      + 'Only people who chose to be findable, on public races, can be found by name. A ride or run of their own (Ride live, Run live) is found only by their livedot handle or follow link, never by name, and never shows where it starts or ends.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -54,13 +54,13 @@ export const TOOLS = [
       required: ['name_or_handle'],
       additionalProperties: false,
     },
-    annotations: { title: 'Find someone racing live', ...READ_ONLY },
+    annotations: { title: 'Find someone live', ...READ_ONLY },
     _meta: uiMeta('Looking for them…', 'Found'),
   },
   {
     name: 'where_is',
-    title: 'Where someone is in a live race',
-    description: 'Where someone is right now in a live race, and the weather they\'re in: km and mile on the course, time against their goal, pace, the finish time it points to, the temperature and wind there (headwind, tailwind or side-on) with the Windline forecast engine\'s rating, the wind and heat over the next few km, and a live map with a Follow live button. '
+    title: 'Where someone is, live',
+    description: 'Where someone is right now, in a live race or on a ride or run of their own (Ride live, Run live), and the weather they\'re in: km and mile on the course, time against their goal, pace, the finish time it points to, the temperature and wind there (headwind, tailwind or side-on) with the Windline forecast engine\'s rating, the wind and heat over the next few km, and a live map with a Follow live button. '
       + 'Use it with the person id find_person returned, or straight away with a livedot handle or follow link the user gave. '
       + 'It answers only what the public live page shows: if they\'re paused, stopped, near the start or finish, or not sharing, it says it can\'t share where they are; say so plainly.',
     inputSchema: {
@@ -73,7 +73,7 @@ export const TOOLS = [
       },
       additionalProperties: false,
     },
-    annotations: { title: 'Where someone is in a live race', ...READ_ONLY },
+    annotations: { title: 'Where someone is, live', ...READ_ONLY },
     _meta: uiMeta('Finding them on the course…', 'Live'),
   },
   {
@@ -244,7 +244,7 @@ ${DESCRIPTION}
 
 ## Which tool
 - A name ("Where's Megan in the Comrades?"): find_person. Several matches: ask the user one short question, never guess.
-- A livedot handle (@megan, livedot.me/megan), a follow link or a person id: where_is.
+- A livedot handle (@megan, livedot.me/megan), a follow link or a person id: where_is. That covers races and their own rides and runs ("Is Wes out training?", "Where's Wes on his ride?"). If they're not live, say so and share their livedot page.
 - Give someone a tap on the back (only when the user asks): tap_on_the_back. It buzzes on their phone; in the day after their finish it's a congratulation.
 - How a race is going, who's leading: event_status.
 - How a club or team is doing in a race ("How's the UCT team doing in the Comrades?"): club_in_race. Its card shows each member; tap one for their card.

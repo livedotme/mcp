@@ -121,7 +121,7 @@ async function personAnswer(ctx, p, via, extra = {}) {
   let course = null, cbody = null;
   if (p.event && !p.free) { const c = await R.course(p.app, p.event.id); if (c.ok) { cbody = c.body; course = coursePoints(p.app, c.body, p.event.dayId); } }
   const tz = (p.event && p.event.tz) || (cbody && cbody.tz) || null, f = f0(tz), name = nameOf(p), first = firstName(p.name).replace(/^(.)/, (c) => c.toUpperCase());
-  const race = p.event ? p.event.name.replace(/\s*\(demo\)\s*$/i, ' (demo)') : p.free ? 'a ride of their own (Ride live)' : null;
+  const race = p.event ? p.event.name.replace(/\s*\(demo\)\s*$/i, ' (demo)') : p.free ? (sport === 'run' ? 'a run of their own (Run live)' : 'a ride of their own (Ride live)') : null;
   const shared = sharesPosition(p), url = followUrl(p, via), sponsor = sponsorLine(await sponsorName(R));
   // a tap would go through (the apps' own rule, as their Live says it: taps on, and open while live or in the day after the finish),
   // and this asker may give one: Findable, or holding their link or handle (Wes, 17 Oct: never a button that fails)
@@ -237,7 +237,7 @@ async function resolve(ctx, args) {
     const running = (b.live || []).filter((x) => ['live', 'paused', 'delayed', 'nosignal', 'waiting'].includes(x.status));
     if (!running.length) {
       const up = (b.upcoming || [])[0];
-      return { text: `${nm} isn't racing right now` + (up ? `. Next: ${up.name}${up.date ? ' on ' + up.date : ''}` : '') + `. Their livedot page: ${SITE.livedot}/${b.handle}` };
+      return { text: `${nm} isn't live right now (no race, ride or run on the go)` + (up ? `. Next: ${up.name}${up.date ? ' on ' + up.date : ''}` : '') + `. Their livedot page: ${SITE.livedot}/${b.handle}` };
     }
     for (const x of running) {
       const r = await R.liveByHandle(x.app, b.handle), v = listOf(r.body)[0];
@@ -569,7 +569,7 @@ async function clubCard(ctx, c, people, race, extra = {}) {
     club: { slug: c.slug, name: clubName, logo: c.logo || null, colour: c.colour || null, accent: c.accent || null, initials: clubName.replace(/\(.*?\)/g, '').trim().split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).map((w) => w[0]).join('').slice(0, 3).toUpperCase() },
     subtitle: coach ? `${n} ${who} in the ${raceShort}` : `${n} of our ${who} in the ${raceShort}`, ...(coach ? { teamTitle: sport === 'run' ? 'Their runners' : 'Their riders' } : {}),
     course: course ? thin(course.pts, 600) : [], progress: 0,
-    dots: list.filter(sharesPosition).slice(0, 60).map((p, i) => ({ lat: p.last.lat, lon: p.last.lon, lead: i === 0, id: idOf(p, null), label: firstName(p.name) })),
+    dots: list.filter(sharesPosition).slice(0, 60).map((p, i) => ({ lat: p.last.lat, lon: p.last.lon, lead: i === 0, id: idOf(p, null), label: nameOf(p) + ' · ' + f.atShort(p.km) })), // the map's dots: name and km on hover, a tap opens their card
     headline: on.length + ' on the course' + (fin.length ? ' · ' + fin.length + ' finished' : ''),
     members, total: n,
     stats: [{ k: 'On the course', v: String(on.length) }, { k: 'Finished', v: String(fin.length) }].concat(lead ? [{ k: 'Out front', v: f.atShort(lead.km), sub: firstName(lead.name) }] : []), // the count is in the header
