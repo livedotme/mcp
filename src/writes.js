@@ -16,11 +16,30 @@ export class NeedAuth extends Error { constructor(scope, error) { super('Sign in
 
 const UNITS = { type: 'string', enum: ['metric', 'imperial'], description: 'Pass the asker\'s units: imperial for users in the US, UK road distances, Liberia or Myanmar, or when they ask in miles/°F; otherwise metric.' };
 const ROUTE = {
-  gpx: { type: 'string', description: 'The GPX file\'s text, if the user pasted or attached it (up to 5 MB).' },
+  gpx: { type: 'string', description: 'The GPX file\'s text (up to 5 MB): if the user pasted it, or attached a file you can read yourself (for example with code).' },
   url: { type: 'string', description: 'A link to the route: a Ride with GPS route, ride or collection (a collection gives one day per route), or any public link to a GPX file. Not Strava.' },
   polyline: { type: 'string', description: 'The route as an encoded polyline (Google\'s format, precision 5 or 6), as another app\'s tool gives it (a route\'s or an activity\'s map).' },
-  points: { type: 'array', items: { anyOf: [{ type: 'array', items: { type: 'number' } }, { type: 'object' }] }, description: 'The route as its points: [[lat, lon], …] or [{ lat, lon }], with elevation in metres as a third number or ele if known. Up to 50,000.' },
+  points: { type: 'array', items: { anyOf: [{ type: 'array', items: { type: 'number' } }, { type: 'object' }] }, description: 'The route as its points: [[lat, lon], …] or [{ lat, lon }], with elevation in metres as a third number or ele if known. Up to 50,000. Use it for points another app\'s tool gave, or that you read from an attached file (GPX, FIT, TCX) with code.' },
 };
+/** ChatGPT's file object (Apps SDK, openai/fileParams): all four declared; download_url and file_id required, nothing else (Scan Tools and
+ *  submission reject anything else). ChatGPT fills it with the file the user attached. */
+export const FILE_OBJ = (what) => ({ type: 'object', description: what, properties: {
+  download_url: { type: 'string', description: 'The file\'s download link.' }, file_id: { type: 'string', description: 'The file\'s id.' },
+  mime_type: { type: 'string', description: 'Its type, if known.' }, file_name: { type: 'string', description: 'Its name, if known (the route\'s name; never an event\'s).' } }, required: ['download_url', 'file_id'] });
+const GPX_FILE = FILE_OBJ('The GPX or route file the user attached (ChatGPT passes it here).');
+const GPX_FILES = { type: 'array', items: FILE_OBJ('One attached GPX or route file.'), description: 'Several GPX or route files the user attached (ChatGPT passes them here): one per day of a tour, ordered by the numbers in their names, else by the map.' };
+/** A file's name as a route's: "Beanie_Run.gpx" → "Beanie Run". */
+export const routeNameOf = (fn) => String(fn || '').replace(/\.(gpx|fit|tcx|xml|kml)$/i, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+/** Attached files (gpx_file, gpx_files) → the routes the tools read: one file is the route (its link, its name), several are the tour's files. */
+export function withFiles(a) {
+  const x = { ...a }, one = (f) => f && typeof f === 'object' && typeof f.download_url === 'string' ? { url: f.download_url, name: routeNameOf(f.file_name) } : null;
+  const many = Array.isArray(x.gpx_files) ? x.gpx_files.map(one).filter(Boolean) : [];
+  if (many.length) x.files = [...(Array.isArray(x.files) ? x.files : []), ...many];
+  const f = one(x.gpx_file);
+  if (f && !x.gpx && !x.url && x.polyline == null && x.points == null && !(Array.isArray(x.files) && x.files.length) && !(Array.isArray(x.days) && x.days.length)) { x.url = f.url; x.fileName = f.name; }
+  delete x.gpx_file; delete x.gpx_files;
+  return x;
+}
 /** For every tool that takes a route (honest, no steering): what another app's tool gives can be passed as it is. */
 const FROM_OTHER_APPS = ' A route can also come from another app\'s tool as its points or an encoded polyline (for example a route or activity map from a fitness app): pass it as polyline or points. Never ask the user to export a GPX if you already have the route\'s points.';
 const FILE = { type: 'object', description: 'A GPX file (its text, or a link to it) or a route\'s polyline or points, and its name (the name helps order the days).', properties: { name: { type: 'string', description: 'The file\'s name, e.g. "day-2.gpx".' }, gpx: { type: 'string', description: 'The GPX text.' }, url: { type: 'string', description: 'A link to the GPX or route (Ride with GPS; not Strava).' }, polyline: { type: 'string', description: 'The day as an encoded polyline (another app\'s route or activity map).' }, points: { type: 'array', description: 'The day as its points, [[lat, lon], …] or [{ lat, lon }].' }, download_url: { type: 'string', description: 'ChatGPT: the attached file\'s download link.' }, file_id: { type: 'string', description: 'ChatGPT: the attached file\'s id.' } } };
@@ -32,8 +51,8 @@ export const WRITE_TOOLS = [
   {
     name: 'plan_route',
     title: 'Weather along your route',
-    description: 'The weather along the user\'s own route (my route, a GPX file, or a link: Ride with GPS or any GPX link) at the time they\'d ride or run it, and a flyover of that route (a flyby, fly over my route) that plays in the chat, coloured by the weather: the forecast within 10 days, 10 years of weather on that date beyond it, rated by Windline\'s forecast engine, with the headwind and tailwind stretches, heat and rain. No account needed. For "What will the wind be like on this route on Saturday at 6?" or "Show me the weather for this GPX and a flyover". The route stays theirs: nothing is published. For a 3D flight and a route video, offer to save it as a private ride or run with create_event (visibility private). Several GPX files are one multi-day tour: pass them all as files (ordered by the numbers in their names, else by the map; one day after another from start), never one call per file.',
-    inputSchema: { type: 'object', properties: { ...ROUTE, gpx_file: { type: 'object', description: 'An attached GPX file (ChatGPT).', properties: { download_url: { type: 'string' }, file_id: { type: 'string' } } },
+    description: 'Weather and a flyover for a GPX file or route the user shares. If the user attached a GPX or route file, call plan_route and pass the file as gpx_file; if you can read the file\'s contents yourself, you may instead pass its text as gpx or its points as points. Never treat a file name as an event name. Also a Ride with GPS or GPX link, or another app\'s route points: the weather along it at the time they\'d ride or run it, and a flyover of the route (a flyby, fly over my route) that plays in the chat, coloured by the weather: the forecast within 10 days, 10 years of weather on that date beyond it, rated by Windline\'s forecast engine, with the headwind and tailwind stretches, heat and rain. No account needed. For "What will the wind be like on this route on Saturday at 6?" or "Show me the weather for this GPX and a flyover". The route stays theirs: nothing is published. For a 3D flight and a route video, offer to save it as a private ride or run with create_event (visibility private). Several GPX files are one multi-day tour: pass them all as files (ordered by the numbers in their names, else by the map; one day after another from start), never one call per file.',
+    inputSchema: { type: 'object', properties: { ...ROUTE, gpx_file: GPX_FILE, gpx_files: GPX_FILES,
       start: { type: 'string', description: 'When they start, "YYYY-MM-DD HH:MM" local to the route. Ask if they didn\'t say.' }, files: { type: 'array', items: FILE, description: 'Several GPX files (a multi-day tour): ordered by the numbers in their names, else by the map; one day after another from start.' }, rest_days: { type: 'array', items: { type: 'string' }, description: 'With files: dates with no riding, "YYYY-MM-DD", only if the user named rest days.' }, starts: { type: 'array', items: { type: 'string' }, description: 'Each day\'s own local start, "YYYY-MM-DD HH:MM", when they differ.' }, name: { type: 'string', description: 'What to call the plan, if the user named it.' }, tz: { type: 'string', description: 'The route\'s IANA time zone, if known (else worked out from where it starts).' },
       sport: { type: 'string', enum: ['ride', 'run'], description: 'ride (default) or run.' }, pace: { type: 'number', description: 'Riding speed in km/h (default 25), or running pace in minutes per km (default 6).' }, units: UNITS },
       required: ['start'], additionalProperties: false },
@@ -135,7 +154,14 @@ export const WRITE_TOOLS = [
 WRITE_TOOLS.forEach((t) => { t._meta = { ...(t._meta || {}), securitySchemes: t.securitySchemes }; }); // ChatGPT reads both
 for (const n of ['plan_route', 'create_event', 'post_club_ride']) { const t = WRITE_TOOLS.find((x) => x.name === n); t.description += FROM_OTHER_APPS; }
 { const ce = WRITE_TOOLS.find((x) => x.name === 'create_event'); ce.inputSchema.properties.polyline = { ...ROUTE.polyline, description: ROUTE.polyline.description + ' One route: a ride, a run or a one-day race (with start).' }; ce.inputSchema.properties.points = { ...ROUTE.points }; }
-WRITE_TOOLS.find((t) => t.name === 'plan_route')._meta = { ...WRITE_TOOLS.find((t) => t.name === 'plan_route')._meta, 'openai/fileParams': ['gpx_file'] };
+// the attached files ChatGPT passes (openai/fileParams): every tool that takes a route or a list
+for (const [n, params] of [['plan_route', ['gpx_file', 'gpx_files']], ['create_event', ['gpx_file', 'gpx_files']], ['post_club_ride', ['gpx_file']], ['invite_members', ['csv_file']]]) {
+  const t = WRITE_TOOLS.find((x) => x.name === n);
+  if (params.includes('gpx_file')) t.inputSchema.properties.gpx_file = GPX_FILE;
+  if (params.includes('gpx_files')) t.inputSchema.properties.gpx_files = GPX_FILES;
+  if (params.includes('csv_file')) t.inputSchema.properties.csv_file = FILE_OBJ('The CSV or spreadsheet the organiser attached (ChatGPT passes it here); or pass its text as csv.');
+  t._meta = { ...(t._meta || {}), 'openai/fileParams': params };
+}
 
 // ---------------------------------------------------------------- helpers
 const LOCAL = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/;
@@ -209,6 +235,7 @@ export function routeGpx(src) {
 
 // ---------------------------------------------------------------- plan_route (no account)
 export async function planRoute(ctx, args, sponsorLine) {
+  args = withFiles(args); // attached files (ChatGPT): the route's link and its name
   const sport = args.sport === 'run' ? 'run' : 'ride';
   const kmh = sport === 'run' ? 60 / (Number(args.pace) > 2 && Number(args.pace) < 20 ? Number(args.pace) : 6) : (Number(args.pace) > 5 && Number(args.pace) < 60 ? Number(args.pace) : 25);
   let tz, days, name, plan = null, totalKm;
@@ -217,13 +244,13 @@ export async function planRoute(ctx, args, sponsorLine) {
     tz = plan.tz; name = plan.name; totalKm = plan.days.reduce((s, d) => s + d.km, 0);
     days = plan.days.map((d) => ({ name: [d.label, [d.from, d.to].filter(Boolean).join(' → ')].filter(Boolean).join(', ') || name, date: d.start.slice(0, 10), startMs: Date.parse(d.start), pts: d.pts, km: d.km, kmh, stops: 0 }));
   } else {
-    const src = { ...args }; if (!src.gpx && !src.url && args.gpx_file && args.gpx_file.download_url) src.url = args.gpx_file.download_url;
+    const src = { ...args };
     const routes = await readRoutes(ctx, src), first = routes[0];
     tz = okTz(args.tz) ? args.tz : zoneAt(first.pts[0]) || 'UTC';
     const starts = [args.start].concat(Array.isArray(args.starts) ? args.starts : []);
     const iso = toIso(starts[0], tz); if (!iso) throw new Plain('When do you start? Give a date and time, "YYYY-MM-DD HH:MM".');
     days = routes.slice(0, 30).map((r, i) => { const s = i === 0 ? Date.parse(iso) : Date.parse(toIso(starts[i] || '', tz) || '') || Date.parse(iso) + i * 864e5; return { name: r.name || `Day ${i + 1}`, date: new Date(s).toISOString().slice(0, 10), startMs: s, pts: r.pts, km: r.km, kmh, stops: 0 }; });
-    name = first.name || 'Your route'; totalKm = routes.reduce((s, r) => s + r.km, 0);
+    name = String(args.name || '').trim() || args.fileName || first.name || 'Your route'; totalKm = routes.reduce((s, r) => s + r.km, 0); // the file's own name when there is one ("Beanie Run")
   }
   const P = { name, sport, tz, app: sport === 'run' ? 'runfast' : 'windline', timedFor: sport === 'run' ? `a runner at ${Math.floor(60 / kmh)}:${String(Math.round((60 / kmh % 1) * 60)).padStart(2, '0')} per km` : `a rider at ${Math.round(kmh)} km/h`,
     url: sport === 'run' ? 'https://runfast.tech' : 'https://windline.tech', days };
@@ -310,7 +337,7 @@ function draftView(ctx, ev, S, sponsorLine, preview = false) {
 }
 
 export async function writeTool(ctx, name, args, sponsorLine) {
-  const a = args || {};
+  const a = withFiles(args || {}); // attached files (ChatGPT's openai/fileParams) → the routes and lists the tools read
   if (!ctx.authorization) throw new NeedAuth(SCOPE[name]); // before reading any route: nothing is read for someone who can't write
   if (name === 'list_my_events') return withSponsor(await tool(ctx, name, {}), sponsorLine, 'my_events');
   if (name === 'create_event' || name === 'post_club_ride') {
@@ -325,7 +352,7 @@ export async function writeTool(ctx, name, args, sponsorLine) {
     const multi = days.length > 1;
     if (!club && multi && (a.type === 'ride' || a.type === 'run')) throw new Plain(`A ${a.type} has one route, and these are ${days.length}: make it a tour (leave the type out), or one ${a.type} per file.`);
     const type = club ? 'ride' : a.type || (multi ? 'tour' : 'ride');
-    const evName = String(a.name || (plan && plan.name) || '').trim(); if (!evName) throw new Plain('Give it a name.');
+    const evName = String(a.name || (plan && plan.name) || a.fileName || '').trim(); if (!evName) throw new Plain('Give it a name.');
     // who it's for: a club's is the group's; else what they said; else a personal ride or run is private, a tour or race shared
     const visibility = club ? 'shared' : a.visibility === 'private' || a.visibility === 'shared' ? a.visibility : a.page || a.club ? 'shared' : type === 'ride' || type === 'run' ? 'private' : 'shared';
     if (visibility === 'private' && (a.page || a.club)) throw new Plain('A private ride is on no page: leave the page out, or make it shared for the group.');
@@ -357,6 +384,9 @@ export async function writeTool(ctx, name, args, sponsorLine) {
   }
   if (name === 'invite_members') { // the list read here (members.js); the invites kept and sent by Windline's server (invites.js)
     let people = Array.isArray(a.people) && a.people.length ? a.people.filter((x) => x && typeof x === 'object').map((x) => ({ name: String(x.name || '').slice(0, 80), email: String(x.email || '').slice(0, 254) })) : null, read = null;
+    if (!people && !a.csv && a.csv_file && typeof a.csv_file.download_url === 'string' && /^https:\/\//.test(a.csv_file.download_url)) { // the attached list (ChatGPT): read once, kept nowhere
+      try { const r = await fetch(a.csv_file.download_url, { signal: AbortSignal.timeout(15000) }); const t = r.ok ? await r.text() : ''; if (t.length > 3e6) throw new Plain('That list is over 3 MB. Send up to 2,000 people at a time.'); a.csv = t; } catch (e) { if (e instanceof Plain) throw e; throw new Plain('I couldn\'t open the attached list. Paste its text, or attach it again.', 502); }
+    }
     if (!people) { if (!a.csv) throw new Plain('Send the list: the CSV (or the spreadsheet\'s text), or the people as names and emails.'); read = parseMembers(a.csv); people = read.people; }
     if (!people.length) throw new Plain('I couldn\'t find any names or email addresses in that list. A CSV with a name and an email in each row works best.');
     const j = await tool(ctx, name, { page: a.page, club: a.club, event: a.event, people, confirm: a.confirm === true });

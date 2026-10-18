@@ -97,8 +97,8 @@ export const OUTPUT_SCHEMAS = {
 // find_clubs, find_events (discover.js): clubs, organisers and their public events near a place
 const NEAR = { add_club: X('Where a club that isn\'t listed asks to be added: { cycling (Windline\'s page application), running (RunFast\'s Add your club) }.'), place: S('The place searched, as found on the map.'), km: N('The radius searched, in km.'), sport: SN('The sport asked for, or null for all.'), app: S('windline, or runfast when every row is a running club or event.'), units: { type: 'string', enum: ['metric', 'imperial'] } };
 Object.assign(OUTPUT_SCHEMAS, {
-  find_clubs: out(['clubs'], { ...NEAR, beginners: B('Only beginner-friendly clubs.'),
-    clubs: A('Nearest first: id, app, name, kind (club or organiser), url (its page), join (Join: the page, sign-in in the same step), photo, km, area, sports, sessions (one line), beginners_welcome, pace_groups, who_for, next ({ start, place, kind, weather, weather_basis: forecast or typical }).') },
+  find_clubs: out(['clubs'], { ...NEAR, beginners: B('Only beginner-friendly clubs.'), open: B('Only clubs open to anyone (no membership needed).'),
+    clubs: A('Nearest first: id, app, name, kind (club or organiser), url (its page), join (Join: the page, sign-in in the same step), photo, km, area, sports, sessions (one line), beginners_welcome, open_to_all (true: Open to anyone, false: Members only, null: not said), links ({ url, biotree }: the club\'s own links page, or null), pace_groups, who_for, next ({ start, place, kind, weather, weather_basis: forecast or typical }).') },
   'Clubs and organisers near a place, nearest first.'),
 
   find_events: out(['events'], { ...NEAR, when: X('The window searched: { from, to } (YYYY-MM-DD), or null for the next four months.'),

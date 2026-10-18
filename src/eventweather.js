@@ -108,6 +108,8 @@ function stretches(w, sport, f) {
     .map((x) => (x.k === 'hard' ? `hardest from ${f.atShort(x.from)} to ${f.num(x.to)}` : `${x.k === 'head' ? 'a headwind' : 'a tailwind'} (about ${f.speedShort(Math.abs(x.head / x.len))}) from ${f.atShort(x.from)} to ${f.num(x.to)}`));
 }
 
+/** A query that's a file or a route rather than an event: "Beanie_Run.gpx", "Beanie_Run", "this route", "my route", "route.fit". */
+export const looksLikeRoute = (q) => /\.(gpx|fit|tcx|kml|kmz)\b/i.test(String(q)) || /[a-z0-9]_[a-z0-9]/i.test(String(q)) || /\b(this|my|our|the attached|attached)\s+(route|ride|run|file|gpx|loop|course)\b/i.test(String(q)) || /^\s*(route|gpx|file)\s*$/i.test(String(q));
 export async function eventWeather(ctx, args, sponsorLine, plans) {
   const { R, f0, now } = ctx, q = String(args.event || '').trim(), year = args.year ? +args.year : null;
   let P = args._plan || null; // a plan made elsewhere (tour_route: a Windline tour's days)
@@ -115,7 +117,9 @@ export async function eventWeather(ctx, args, sponsorLine, plans) {
   if (!q) return { text: 'Which event?\n\n' + sponsorLine, structured: { view: 'none' }, map: null };
   const cs = await candidates(R, q, year, now);
   if (!cs.length) {
-    const t = `I don't have "${q}"${year ? ' in ' + year : ''} on livedot yet. I can do the weather for events with a livedot page or preview, and for races on Windline and RunFast in the next two weeks. Try "the Comrades demo" or "NYC Marathon".`;
+    // a file's or a route's name taken for an event's (Wes, 18 Oct: "Beanie_Run.gpx … tomorrow at 06:00" became event_weather "Beanie Run"): say so, and how
+    if (looksLikeRoute(q)) { const t = 'That looks like your own route. Ask me for the weather on your route and attach the GPX (or I can use its points), and you\'ll get the weather along it with a flyover.'; return { text: t + '\n\n' + sponsorLine, structured: { view: 'none', message: t, use: 'plan_route' }, map: null }; }
+    const t = `I don't have "${q}"${year ? ' in ' + year : ''} on livedot yet. I can do the weather for events with a livedot page or preview, and for races on Windline and RunFast in the next two weeks. If it's your own route, attach the GPX and ask for the weather on your route: you'll get the weather along it with a flyover.`;
     return { text: t + '\n\n' + sponsorLine, structured: { view: 'none', message: t }, map: null };
   }
   const top = cs.filter((c) => c.s === cs[0].s);

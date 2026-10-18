@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "livedot",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Live race tracking, race-day weather and course flyovers for running and cycling, from livedot (Windline for cycling, RunFast for running).",
   "author": {
     "name": "livedot",
@@ -88,7 +88,7 @@
         "demo_recording_url": "REPLACE_WITH_VIDEO_URL"
       },
       "publication": {
-        "release_notes": "First release: follow people in live races, race-day weather, course flyovers, cycling tour routes and notes; organiser sign-in to create and publish events."
+        "release_notes": "Server instructions published; a GPX or route file you attach goes to plan_route (weather along your route and a flyover), never mistaken for an event; clubs and events near a place; a club or team in a race."
       }
     }
   }

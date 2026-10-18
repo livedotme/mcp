@@ -123,6 +123,7 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .near .ln{display:block;color:var(--body);font-size:13.5px;margin-top:4px}
 .near .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.near .tags span{font:600 11.5px/1 var(--font);padding:4px 7px;border-radius:6px;background:var(--soft);color:var(--body)}.near .tags .yes{background:var(--live-wash);color:var(--live-ink)}
 .near .nx{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:13px;color:var(--body)}.near .nx i{width:7px;height:7px;border-radius:50%;flex:none;background:var(--faint)}.near .nx i.forecast{background:var(--live)}.near .nx i.typical{background:var(--warn)}
+.near .lnk{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:5px;margin-top:6px;font:600 12.5px/1.2 var(--font);color:var(--muted)}.near .lnk:hover{color:var(--ink);text-decoration:underline}.near .lnk:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}.near .lnk img{width:14px;height:14px;border-radius:3px}
 .near .go{flex:none;height:34px;padding:0 14px;margin-top:2px;font-size:13.5px}
 .near .run .av{color:var(--run-ink)}
 .skel{height:300px;display:grid;place-items:center;color:var(--muted);font-size:13px}
@@ -381,13 +382,16 @@ function picker(v) {
   host.size();
 }
 /** find_clubs, find_events: the clubs or events near a place. The name opens its page; Join (or I'm in) opens it with sign-in. */
+/** A club's links page on Biotree (biotree.bio or under it), read from the hostname itself. */
+function bioHost(u) { try { return /(^|\.)biotree\.bio$/i.test(new URL(u).hostname); } catch (e) { return false; } }
 function nearList(v) {
   var h = '<div class="card">' + head(v.title, v.subtitle, '');
   h += '<ul class="near">' + v.items.map(function (x) {
     return '<li class="' + (x.app === 'runfast' ? 'run' : '') + '">' + avatarOf(x.name, x.photo, null) + '<span class="mid"><button type="button" class="nm" data-open="' + esc(x.url) + '">' + esc(x.name) + '</button>'
       + '<span class="sub">' + esc(x.sub) + '</span>' + (x.line ? '<span class="ln">' + esc(x.line) + '</span>' : '')
-      + (x.tags && x.tags.length ? '<span class="tags">' + x.tags.map(function (t) { return '<span' + (/^Beginners/.test(t) ? ' class="yes"' : '') + '>' + esc(t) + '</span>'; }).join('') + '</span>' : '')
-      + (x.next ? '<span class="nx"><i class="' + esc(x.weather || '') + '"></i>' + esc(x.next) + '</span>' : '') + '</span>'
+      + (x.tags && x.tags.length ? '<span class="tags">' + x.tags.map(function (t) { return '<span' + (/^(Beginners|Open to anyone)/.test(t) ? ' class="yes"' : '') + '>' + esc(t) + '</span>'; }).join('') + '</span>' : '')
+      + (x.next ? '<span class="nx"><i class="' + esc(x.weather || '') + '"></i>' + esc(x.next) + '</span>' : '')
+      + (x.links && /^https:\/\//i.test(String(x.links.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.links.url) + '">' + (bioHost(x.links.url) ? '<img src="https://windline.tech/img/sponsors/biotree.png" alt="" width="14" height="14">' : '') + 'Club links</button>' : '') + '</span>'
       + '<button type="button" class="btn go" data-open="' + esc(x.button.url) + '">' + esc(x.button.label) + '</button></li>';
   }).join('') + '</ul>';
   h += '<div class="ft">' + (v.add ? '<button type="button" class="btn sec2" data-open="' + esc(v.add.url) + '">' + esc(v.add.label) + '</button>' : '') + '<span class="meta">' + (v.list === 'events' ? 'Weather: the forecast within 10 days, typical beyond.' : 'What each club chose to share on its page.') + (v.updated ? ' ' + metaHtml(v) : '') + '</span></div>';

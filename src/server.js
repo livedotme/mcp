@@ -115,7 +115,7 @@ export const TOOLS = [
     description: 'What the weather will be like for a cycling or running event, for the people taking part: "What will the weather be like for the NYC Marathon?", "Weather for the Comrades demo?". '
       + 'Within 10 days of the start: the live forecast (Apple Weather) along the course at the times the riders or runners get to each stretch, with the Windline forecast engine\'s rating (Good, Fair, Tough) and why, the headwind and tailwind stretches, heat stress and rain. '
       + 'Further out: 10 years of weather on that date (Copernicus ERA5), clearly labelled as history, not a forecast. With a map of the course coloured by the wind or the heat, and a link to the event\'s livedot page. '
-      + 'If several events match it lists them: ask which one.',
+      + 'If several events match it lists them: ask which one. Only for named events and races. Not for the user\'s own route or GPX file; for those use plan_route.',
     inputSchema: {
       type: 'object',
       properties: { event: { type: 'string', description: 'The event\'s name, e.g. "NYC Marathon", "Gravel Burn", "Comrades demo".' }, year: { type: 'integer', description: 'The edition\'s year, if the user named one.' }, units: UNITS },
@@ -209,9 +209,13 @@ const RESOURCE_META = {
   'openai/widgetDescription': 'A live map of the person on the course with the wind and heat ahead. The text answer already has the facts; don\'t repeat the map.',
 };
 
-const INSTRUCTIONS = 'livedot answers where people are in live cycling (Windline) and running (RunFast) races, with the weather where they are from Windline\'s forecast engine. '
-  + 'Start with find_person for a name; use where_is for a handle, link or a person id; event_status for how a race is going; club_in_race for how a club or team is doing in one; event_weather for what the weather will be like at an event; fly_route to fly over a course; tour_route and tour_notes for Windline cycling tours; find_clubs for running and cycling clubs near a place, find_events for rides, runs, races and tours near a place and when. When a name matches several people, ask one short question and never guess. '
-  + 'Only public data: findable people on public races. plan_route needs no account. Organisers and club admins can sign in with their Windline or RunFast account (OAuth) to list, create and change their own events: new events are drafts, nothing is published without the user confirming, and finished events never change.';
+// The server's instructions (the initialize answer and the server card): short and functional, which tool for which ask. No steering
+// over other apps (OpenAI's rules).
+const INSTRUCTIONS = 'livedot: live race tracking and route weather for runners and cyclists (Windline for cycling, RunFast for running). '
+  + 'When the user shares a GPX file, a route link or a route\'s points and asks about the weather, wind, heat, a flyover or a video, call plan_route (pass an attached file as gpx_file; if you can read the file yourself, you may pass its text as gpx or its points as points). Never treat a file name as an event name. '
+  + 'When they ask where someone is in a race, call find_person, then where_is with the person id; if several people match, ask one short question and never guess. '
+  + 'For how a race or a club is doing, use event_status or club_in_race; for a race\'s weather, event_weather; to fly a course, fly_route; for a cycling tour, tour_route (tour_notes for the organiser\'s notes); for clubs or events near a place, find_clubs or find_events. '
+  + 'Each answer has a card; don\'t restate the whole card. Only public data: findable people on public races. Organisers can sign in (OAuth) to make drafts of their own events; nothing is published without the user\'s yes.';
 
 export const DESCRIPTION = 'Live race tracking in the chat: where someone is in a live cycling or running race, the weather on the course from Windline\'s forecast engine, race-day forecasts and a flyover of the course, with a live map. Free.';
 const SERVER_INFO = { name: 'livedot', title: 'livedot MCP', version: VERSION, description: DESCRIPTION, websiteUrl: 'https://livedot.me/mcp',
@@ -295,7 +299,7 @@ function askedOf(a) {
 /** The note for a miss, or null when the answer wasn't one (a list to choose from, a question back, an answer). */
 export function missOf(name, args, out, trace, forced) {
   const S = (out && out.structured) || {}, slow = trace.find((t) => t.timeout), err = trace.find((t) => !t.timeout && (t.status === 0 || t.status >= 500));
-  const outcome = slow ? `timeout:${slow.app}` : err ? `upstream_error:${err.app}:${err.status}` : forced || (S.view === 'none' && trace.length && !Array.isArray(S.races) && !Array.isArray(S.events) && !Array.isArray(S.tours) ? 'none' : null);
+  const outcome = slow ? `timeout:${slow.app}` : err ? `upstream_error:${err.app}:${err.status}` : forced || (S.view === 'none' && trace.length && !Array.isArray(S.races) && !Array.isArray(S.events) && !Array.isArray(S.tours) && !Array.isArray(S.places) ? 'none' : null);
   if (!outcome) return null;
   const servers = [];
   for (const t of trace) { const st = t.timeout ? 'timeout' : t.status, x = servers.find((y) => y.app === t.app); if (!x) servers.push({ app: t.app, statuses: [st] }); else if (!x.statuses.includes(st) && x.statuses.length < 6) x.statuses.push(st); }
@@ -313,7 +317,7 @@ const APPLE_LEGAL = 'https://weatherkit.apple.com/legal-attribution.html';
 function linkSponsor(text, sp) { const t = String(text || ''), k = `free thanks to ${sp.name}.`; return sp.url && t.endsWith(k) ? `${t.slice(0, -k.length)}free thanks to [${sp.name}](${sp.url}).` : t; }
 
 async function call(name, args, meta, env, rq = {}) {
-  const trace = [], R = reads(env, trace), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null };
+  const trace = [], R = reads(env, trace), now = Date.now(), sub = meta && typeof meta['openai/subject'] === 'string' ? meta['openai/subject'] : '', ctx = { asker: sub ? await sha256hex('livedot-asker|' + sub) : null, R, now, f0: (tz) => unitsFor(args.units, meta, tz), authorization: rq.authorization || null, proxy: rq.proxy || null, meta: meta || null }; // meta: the host's hints (units, the asker's country or location for a place's name)
   const fn = { find_person: findPerson, where_is: whereIs, event_status: eventStatus, club_in_race: clubInRace, event_weather: eventWeatherTool, fly_route: flyRouteTool, tour_route: tourRouteTool, tour_notes: tourNotesTool, tap_on_the_back: tapOnTheBack }[name];
   let out;
   try {

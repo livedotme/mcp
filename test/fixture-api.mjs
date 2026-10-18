@@ -94,7 +94,8 @@ function tourEvent(slug) {
   return { v: 1, type: 'tour', slug, name: t.name, description: '', url: 'https://tour.windline.tech/' + slug, tz: t.tz, pace: t.pace, stops: t.stops, routeFiles: t.routeFiles, branding: null, updatedAt: 0,
     tapsOn: t.tapsOn !== false, ...(t.tapsDemo ? { tapsDemo: true } : {}), ...(t.notes ? { notes: t.notes, notesUpdatedAt: Date.UTC(2026, 9, 15, 9, 0) } : {}), days: t.days.map((d, i) => { const pts = split(G, d.a, d.b); return { id: 'd' + (i + 1), label: d.label, from: d.from, to: d.to, start: d.start, km: Math.round(d.b - d.a), climb: d.climb, pace: t.pace, stops: t.stops, points: pts }; }) };
 }
-// find_clubs, find_events: clubs and events near Fourways, Johannesburg, in the contract's shape (Windline handoffs/2026-10-17-clubs-near-
+// find_clubs, find_events: clubs and events near Fourways, Johannesburg, in the contract's shape (a club's url and join: its livedot.me
+// address, #cycling / #running and #join-cycling / #join-running, Wes 17 Oct) (Windline handoffs/2026-10-17-clubs-near-
 // contract.md); anywhere else, none. Starts are relative to now, so the weather column is inside its 10 days for the first rows.
 const FW = { lat: -26.0106, lon: 28.0104 };
 function near(app, what, q, now) {
@@ -103,19 +104,22 @@ function near(app, what, q, now) {
   const area = (name, la, lo) => ({ name, lat: la, lon: lo, country: 'ZA' });
   const CLUBS = {
     windline: [
-      { id: 'club:fourways-wheelers', app: 'windline', name: 'Fourways Wheelers', url: 'https://windline.tech/c/fourways-wheelers', join: 'https://windline.tech/c/fourways-wheelers#join', photo: 'https://windline.tech/img/fw.png', kind: 'club',
+      { id: 'club:fourways-wheelers', app: 'windline', name: 'Fourways Wheelers', url: 'https://livedot.me/fourways-wheelers#cycling', join: 'https://livedot.me/fourways-wheelers#join-cycling', photo: 'https://windline.tech/img/fw.png', kind: 'club',
         area: area('Fourways', -26.011, 28.01), sports: ['road'], sessions: [{ day: 'tue', time: '17:30', place: 'Fourways Mall', sport: null }, { day: 'sat', time: '06:00', place: 'Fourways', sport: null }], sessionsLine: 'Tue 17:30 from Fourways Mall · Sat 06:00 from Fourways',
-        beginnersWelcome: true, paceGroups: '25–30 km/h', whoFor: 'Anyone with a road bike', next: { start: day(2, 6), place: 'Fourways', kind: 'ride', name: 'Saturday Bunch', url: 'https://ride.windline.tech/fw-saturday' }, km: 0 },
-      { id: 'organiser:jozi-tours', app: 'windline', name: 'Jozi Tours', url: 'https://windline.tech/o/jozi-tours', join: 'https://windline.tech/o/jozi-tours#join', photo: null, kind: 'organiser',
-        area: area('Johannesburg', -26.204, 28.047), sports: ['tours', 'road'], sessions: [], sessionsLine: '', beginnersWelcome: false, paceGroups: null, whoFor: null, next: { start: day(28, 6), place: 'Muldersdrift', kind: 'tour', name: 'Cradle 3-Day', url: 'https://tour.windline.tech/cradle-3-day' }, km: 21.8 },
+        beginnersWelcome: true, paceGroups: '25–30 km/h', whoFor: 'Anyone with a road bike', next: { start: day(2, 6), place: 'Fourways', kind: 'ride', name: 'Saturday Bunch', url: 'https://ride.windline.tech/fw-saturday' }, km: 0,
+        openToAll: true, areaSource: 'set', links: { url: 'https://fourways-wheelers.biotree.bio/', biotree: true } },
+      { id: 'organiser:jozi-tours', app: 'windline', name: 'Jozi Tours', url: 'https://livedot.me/jozi-tours#cycling', join: 'https://livedot.me/jozi-tours#join-cycling', photo: null, kind: 'organiser',
+        area: area('Johannesburg', -26.204, 28.047), sports: ['tours', 'road'], sessions: [], sessionsLine: '', beginnersWelcome: false, paceGroups: null, whoFor: null, next: { start: day(28, 6), place: 'Muldersdrift', kind: 'tour', name: 'Cradle 3-Day', url: 'https://tour.windline.tech/cradle-3-day' }, km: 21.8,
+        openToAll: null, areaSource: 'auto', links: null },
     ],
     runfast: [
-      { id: 'club:fourways-striders', app: 'runfast', name: 'Fourways Striders', url: 'https://runfast.tech/c/fourways-striders', join: 'https://runfast.tech/c/fourways-striders#join', photo: 'https://runfast.tech/img/fs.png', kind: 'club',
+      { id: 'club:fourways-striders', app: 'runfast', name: 'Fourways Striders', url: 'https://livedot.me/fourways-striders#running', join: 'https://livedot.me/fourways-striders#join-running', photo: 'https://runfast.tech/img/fs.png', kind: 'club',
         area: area('Fourways', -26.011, 28.01), sports: ['road-run'], sessions: [{ day: 'tue', time: '17:30', place: 'Fourways Mall', sport: null }, { day: 'sat', time: '06:00', place: 'Montecasino', sport: null }], sessionsLine: 'Tue 17:30 from Fourways Mall · Sat 06:00 from Montecasino',
-        beginnersWelcome: true, paceGroups: '5:30–7:00 /km', whoFor: 'Anyone who can run 5 km', next: { start: day(1, 17), place: 'Fourways Mall', kind: 'session' }, km: 0 },
-      { id: 'club:jozi-trail', app: 'runfast', name: 'Jozi Trail Runners', url: 'https://runfast.tech/c/jozi-trail', join: 'https://runfast.tech/c/jozi-trail#join', photo: null, kind: 'club',
+        beginnersWelcome: true, paceGroups: '5:30–7:00 /km', whoFor: 'Anyone who can run 5 km', next: { start: day(1, 17), place: 'Fourways Mall', kind: 'session' }, km: 0,
+        openToAll: false, areaSource: 'set', links: { url: 'https://biotree.bio.example.com/striders', biotree: true } }, // a look-alike host: Club links, never Biotree's mark
+      { id: 'club:jozi-trail', app: 'runfast', name: 'Jozi Trail Runners', url: 'https://livedot.me/jozi-trail#running', join: 'https://livedot.me/jozi-trail#join-running', photo: null, kind: 'club',
         area: area('Northcliff', -26.143, 27.968), sports: ['trail-run'], sessions: [{ day: 'sun', time: '06:30', place: 'Northcliff Hill', sport: null }], sessionsLine: 'Sun 06:30 from Northcliff Hill', beginnersWelcome: false, paceGroups: null, whoFor: null,
-        next: { start: day(3, 6), place: 'Northcliff Hill', kind: 'session' }, km: 15.4 },
+        next: { start: day(3, 6), place: 'Northcliff Hill', kind: 'session' }, km: 15.4, openToAll: true, areaSource: 'auto', links: { url: 'http://jozi-trail.example/', biotree: false } }, // not https: no link
     ],
   };
   const EVENTS = {
@@ -212,6 +216,8 @@ function mcpStub(req, res, p, raw) {
     return j(200, { ok: true, named: !!(b.name || req.headers.authorization), count: 7, finished: false, first: 'Megan', signedIn: !!req.headers.authorization });
   }
   if (p === '/route') {
+    if (b.url && /^https:\/\/files\.oaiusercontent\.test\//.test(b.url)) { MCP_SEEN.push({ tool: 'route', args: { url: b.url } }); // a file ChatGPT passed (its download link): the reader fetches it; stood in for with a short route near Fourways
+      const pts = Array.from({ length: 40 }, (_, i) => [-26.0 + i * 0.002, 28.0 + i * 0.0025, null]); return j(200, { ok: true, routes: [{ name: 'Track 1', from: '', to: '', km: 12.4, climb: 80, pts }] }); }
     if (b.url && /strava/.test(b.url)) return j(400, { ok: false, error: 'Strava only shares a route with the account that made it.' });
     const pts = [...String(b.gpx || '').matchAll(/<trkpt lat="([-\d.]+)" lon="([-\d.]+)"/g)].map((m) => [+m[1], +m[2], null]);
     if (!/<gpx[\s>]/i.test(String(b.gpx || '')) && !b.url) return j(400, { ok: false, error: 'That file isn’t a GPX file.' });
