@@ -1,7 +1,7 @@
 # Smithery: livedot MCP is a hosted remote server. There is nothing to build or run: Smithery connects to the URL.
 # Publish it on smithery.ai as an existing remote server (Streamable HTTP, no configuration; asking needs no sign-in, organisers sign in with OAuth).
 name: livedot MCP
-description: Where someone is in a live running or cycling race, with a live map; running and cycling clubs near you; coaches near you; race-day weather.
+description: Find someone in a live running or cycling race, clubs and coaches near you, and race-day weather.
 homepage: https://livedot.me/mcp
 repository: https://github.com/livedotme/mcp
 license: MIT

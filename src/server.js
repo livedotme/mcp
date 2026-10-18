@@ -34,11 +34,7 @@ export const TOOLS = [
   {
     name: 'find_person',
     title: 'Find someone live',
-    description: 'Find a person who is live on livedot (Windline for cycling, RunFast for running): in a race, e.g. "Where\'s Megan in the Comrades?" or "Is Thandi racing?", or out on a ride or run of their own, e.g. "Is Wes out training? livedot.me/wes". '
-      + 'Pass what the user gave, as they wrote it: a name, a livedot handle (@megan, livedot.me/megan) or a follow link, and the race if they named one. '
-      + 'One clear match (a handle, or a full name that fits one person) returns the live answer at once: where they are, time against their goal, finish time, the weather there, and a live map. '
-      + 'Several matches return the 5 most likely and the total. Then ask the user ONE short question (surname or initial, bib or club) and call again with it, or call where_is with the person id they pick. Never guess between people. '
-      + 'Only people who chose to be findable, on public races, can be found by name. A ride or run of their own (Ride live, Run live) is found only by their livedot handle or follow link, never by name, and never shows where it starts or ends.',
+    description: 'Finds a person who is live on livedot right now (cycling on Windline, running on RunFast) and answers where they are. Use it when the user asks where someone is or how they\'re doing in a race ("Where\'s Megan in the Comrades?"), or gives a livedot handle (@megan, livedot.me/megan) or a follow link. Inputs: name_or_handle as the user wrote it; event if they named the race; surname, bib, club, place or wave to narrow. Returns: for one clear match, the live answer (position, time against goal, finish estimate, the weather there) with a live map; for several matches, the 5 most likely and the total, so the user can pick (then call where_is with the chosen person id, or call again with what they add). Limits: only people who chose to be findable on public races can be found by name; a ride or run of their own (Ride live, Run live) only by their handle or follow link, never showing where it starts or ends. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -79,8 +75,7 @@ export const TOOLS = [
   {
     name: 'event_status',
     title: 'How a live race is going',
-    description: 'How a live race on livedot is going: whether it\'s live, how long it has been under way, how many people are on the map, how many have finished, who\'s out front and the leaders where the public race map shows them, with a live map. '
-      + 'For "How\'s the Comrades going?" or "Who\'s leading the Coast Classic?". If several races match it lists them: ask the user which one. Try "Comrades demo" or "Coast Classic demo" to see it work any time.',
+    description: 'Shows how a live race on livedot is going. Use it when the user asks how a race is going or who is leading ("How\'s the Comrades going?", "Who\'s leading the Coast Classic?"). Inputs: event (the race\'s name). Returns: whether it\'s live, how long it has been under way, how many people are on the public map, how many have finished, and the leaders the public race map shows, with a live map. If several races match, it lists them so the user can choose. Limits: public races only; only what the public race map shows. Read-only.',
     inputSchema: {
       type: 'object',
       properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, club: { type: 'string', description: 'A club or team, if the user asked about one in this race (as club_in_race).' }, coach: { type: 'string', description: 'A coach, if the user asked about their athletes in this race (as club_in_race).' }, units: UNITS },
@@ -93,10 +88,7 @@ export const TOOLS = [
   {
     name: 'club_in_race',
     title: 'How a club is doing in a race',
-    description: 'How a club or team is doing in a live race: "How is the UCT team doing in the Comrades?", "How are Coast Riders doing in the Coast Classic?". '
-      + 'Finds the club by its name or its page address (windline.tech/c/<club>, runfast.tech/c/<club>) and shows its people on the club\'s live map in that race: each one\'s km, time against their goal or finish time, and a map with just the club\'s dots. Tapping a person opens their live card. '
-      + 'Only what the club\'s public live map shows: members who chose to be findable, never a private run, never a position near the start or finish. If several clubs match it lists them: ask which one. Try "the demo club in the Comrades" or "Coast Riders in the Coast Classic" any time. '
-      + 'A coach\'s athletes the same way: pass coach ("How are Coach Nadia\'s runners doing in the Comrades?"); several coaches, or no race named and theirs live in several, show a picker.',
+    description: 'Shows how a club, team or coach\'s athletes are doing in a live race. Use it when the user asks about a club or team in a race ("How is the UCT team doing in the Comrades?") or a coach\'s athletes ("How are Coach Nadia\'s runners doing in the Comrades?"). Inputs: club (its name or page address, windline.tech/c/<club> or runfast.tech/c/<club>) or coach; event if named. Returns: each member\'s km, time against goal or finish time, and a map with just their dots; each person opens their live card. If several clubs or coaches match, or their people are live in several races, it lists them so the user can choose. Limits: only what the club\'s public live map shows: members who chose to be findable, never a private run, never a position near the start or finish. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,11 +154,7 @@ export const TOOLS = [
   {
     name: 'tap_on_the_back',
     title: 'Give someone a tap on the back',
-    description: 'Send someone in a live race a tap on the back: it buzzes on their phone, with your name if you\'re signed in (or the first name you give). In the day after their finish it lands as a congratulation. '
-      + 'Only when the user asks to give them a tap on the back (or to cheer them on, say well done): never on your own, and one per ask. Use the person id from find_person, or a livedot handle or follow link. '
-      + 'For a cycling tour ("Give the Durban tour a tap on the back"), pass tour: the tap goes to its organiser, on the tour\'s days. '
-      + 'For a club or team in a race ("Give the UCT team a tap on the back"), pass club (and event): one tap to each member on the club\'s live map who takes taps; it says how many went. '
-      + 'It keeps the person\'s own settings and the follow page\'s rules: if they turned taps off, aren\'t live, or only take taps from people with their link, it says so; tell the user plainly. Returns the live map too.',
+    description: 'Sends a tap on the back: a short buzz on the person\'s phone, with the sender\'s name if signed in (or a first name they give). In the day after a finish it arrives as a congratulation. Use it only when the user explicitly asks to give someone a tap on the back; one tap per request. Inputs: person (an id from find_person), or a livedot handle or follow link; or tour (the tap goes to the tour\'s organiser on its days); or club with event (one tap to each member on the club\'s live map who accepts taps). Side effects: sends a notification to the person (or to each club member, and it reports how many). Limits: follows each person\'s own settings; if taps are off, they aren\'t live, or they only accept taps from people with their link, it sends nothing and says so. Returns the live map.',
     inputSchema: {
       type: 'object',
       properties: {

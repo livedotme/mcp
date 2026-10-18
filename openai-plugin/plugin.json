@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "livedot",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "description": "Where someone is in a live running or cycling race, running and cycling clubs near you, coaches near you, and race-day weather, from livedot (Windline for cycling, RunFast for running).",
   "author": {
     "name": "livedot",
@@ -12,9 +12,9 @@
       "interface": {
         "displayName": "livedot",
         "shortDescription": "Live races, clubs and coaches",
-        "longDescription": "Ask \"Where's Megan in the Comrades?\" and livedot shows where she is right now: her km, her time against her goal, her finish time and the weather where she is, on a live map that updates itself. When a name fits many people, it shows the likeliest few and asks one short question instead of guessing. Follow a whole club or a coach's athletes in a race, and give someone a tap on the back that buzzes on their phone.\n\nFind a running or cycling club near you: \"Which cycling club should I join in Johannesburg?\", \"Beginner running club near Fourways\". Each club comes with its weekly rides or runs, the weather for the next one, and how to join.\n\nFind a coach or training group near you: \"Personal cycling trainer in Johannesburg\", \"Running coach near Sandton\". Each comes with what they coach, 1-on-1 or group, their next session with its weather, and how to book.\n\nPlan ahead: race-day weather along the course (the forecast within 10 days, 10 years of weather on the date beyond), a flyover of the course, the weather along a GPX route you share, and races, tours and club rides near you. Organisers sign in with Windline or RunFast to make events as drafts and publish after confirming.\n\nCycling on Windline, running on RunFast. Only people who chose to be findable on public races are found by name; no position near the start or finish or when someone has stopped. Free, thanks to ProLend.",
+        "longDescription": "Ask \"Where's Megan in the Comrades?\" and livedot shows where she is right now: her km, her time against her goal, her finish time and the weather where she is, on a live map that updates itself. When a name fits many people, it shows the likeliest few and asks one short question instead of guessing. Follow a whole club or a coach's athletes in a race, and give someone a tap on the back that buzzes on their phone.\n\nFind a running or cycling club near you: \"Which cycling club should I join in Johannesburg?\", \"Beginner running club near Fourways\". Each club comes with its weekly rides or runs, the weather for the next one, and how to join.\n\nFind a coach or training group near you: \"Personal cycling trainer in Johannesburg\", \"Running coach near Sandton\". Each comes with what they coach, 1-on-1 or group, their next session with its weather, and how to book.\n\nPlan ahead: race-day weather along the course (the forecast within 10 days, 10 years of weather on the date beyond), a flyover of the course, the weather along a GPX route you share, and races, tours and club rides near you. Organisers sign in with Windline or RunFast to make events as drafts and publish after confirming.\n\nCycling on Windline, running on RunFast. Only people who chose to be findable on public races are found by name; no position near the start or finish or when someone has stopped.",
         "developerName": "livedot",
-        "category": "Sports",
+        "category": "Entertainment",
         "capabilities": [],
         "websiteURL": "https://livedot.me/mcp",
         "supportURL": "https://livedot.me/mcp",
@@ -85,7 +85,9 @@
             }
           ]
         },
-        "demo_recording_url": "https://customer-d781pxxwvknetdt6.cloudflarestream.com/d93c4ea7227cdcf4a2d68c08086dd1a4/watch"
+        "demo_recording_url": "https://customer-d781pxxwvknetdt6.cloudflarestream.com/d93c4ea7227cdcf4a2d68c08086dd1a4/watch",
+        "commerce": false,
+        "commerce_description": "livedot doesn't sell anything or take payments."
       },
       "publication": {
         "release_notes": "Coaches near a place (find_coaches); a coach's athletes in a race; each athlete's club and coach line; wider club, event and coach searches; full names by livedot handle; own rides and runs (Ride live, Run live) by handle; team map dots name each person."

@@ -448,7 +448,7 @@ try {
     assert.match(t, /^Tap sent\. Megan will feel it on their phone\.\n\n/); assert.equal(r.structuredContent.view, 'tap'); assert.equal(r.structuredContent.sent, true); assert.equal(r._meta['livedot/view'].kind, 'person');
     assert.match(t, /Plan it in RunFast, free: create your account/); assert.match(t, SPONSOR);
     assert.equal(sent.args.app, 'runfast'); assert.equal(sent.args.handle, 'megan'); assert.equal(sent.args.name, 'Sam'); assert.match(sent.args.asker, /^[0-9a-f]{64}$/); assert.ok(!JSON.stringify(sent).includes('abc123'), 'the assistant’s user id is hashed before it goes anywhere'); assert.equal(sent.auth, null);
-    const tl = TOOLS.find((x) => x.name === 'tap_on_the_back'); assert.equal(tl.annotations.readOnlyHint, false); assert.equal(tl.annotations.destructiveHint, false); assert.match(tl.description, /Only when the user asks/); assert.match(tl.description, /never on your own/);
+    const tl = TOOLS.find((x) => x.name === 'tap_on_the_back'); assert.equal(tl.annotations.readOnlyHint, false); assert.equal(tl.annotations.destructiveHint, false); assert.match(tl.description, /only when the user explicitly asks/); assert.match(tl.description, /one tap per request/);
     assert.deepEqual(tl.securitySchemes, [{ type: 'noauth' }, { type: 'oauth2', scopes: [] }]);
   });
   await test('tap_on_the_back: signed in it carries their name; taps off, again within a minute, not live (private): said plainly; finished in the last day: a congratulation', async () => {
@@ -550,7 +550,7 @@ try {
     const r = await call('tap_on_the_back', { tour: 'karoo-campfire-tour', name: 'Sam' }), sent = await lastSeen();
     assert.match(r.content[0].text, /^Tap sent\. Alistair’s Cycle Tours will read it out tonight\.\n/); assert.equal(r.structuredContent.tour, 'Karoo Campfire Tour'); assert.equal(sent.args.tour, 'karoo-campfire-tour'); assert.equal(sent.args.app, 'windline'); assert.equal(sent.args.name, 'Sam');
     const no = await call('tap_on_the_back', { tour: 'Alistair’s Durban Tour 2027' }); assert.match(no.content[0].text, /isn’t open for taps on the back/); assert.ok(!/Tap sent/.test(no.content[0].text));
-    assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /pass tour: the tap goes to its organiser/); assert.match(TOOLS.find((x) => x.name === 'tour_route').description, /Where is Alistair\\'s Durban tour\?|Where is Alistair's Durban tour\?/);
+    assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /tour \(the tap goes to the tour's organiser/); assert.match(TOOLS.find((x) => x.name === 'tour_route').description, /Where is Alistair\\'s Durban tour\?|Where is Alistair's Durban tour\?/);
   });
   // Wes's demo prompts, as production answers them most of the day: no race live but the demos (the apps list them: config/demo.listed)
   const quiet = { ...env, WINDLINE_API: `http://localhost:${PORT}/quiet/windline`, RUNFAST_API: `http://localhost:${PORT}/quiet/runfast` };
@@ -609,7 +609,7 @@ try {
     const t = await call('tap_on_the_back', { club: 'Durban Striders', event: 'Comrades', name: 'Sam' }), seen = (await (await fetch(`http://localhost:${PORT}/mcp-seen`)).json()).slice(n0).filter((x) => x.tool === 'tap');
     const want = S.members.filter((m) => m.can_tap).length; assert.equal(seen.length, want); assert.ok(seen.every((x) => /^pfix/.test(x.args.pid) && x.args.app === 'runfast' && x.args.name === 'Sam'));
     assert.match(t.content[0].text, new RegExp('^Taps sent to ' + want + ' runners from Durban Striders\\.')); assert.equal(t.structuredContent.taps_sent, want); assert.equal(t._meta['livedot/view'].kind, 'club');
-    assert.equal(TOOLS.find((x) => x.name === 'club_in_race').annotations.readOnlyHint, true); assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /pass club \(and event\)/);
+    assert.equal(TOOLS.find((x) => x.name === 'club_in_race').annotations.readOnlyHint, true); assert.match(TOOLS.find((x) => x.name === 'tap_on_the_back').description, /club with event/);
   });
   await test('the demo clubs (Wes’s meetings): “How’s the demo club doing in the Comrades?”, “How are Coast Riders doing in the Coast Classic?”, the names typed plainly: 12 people, photos, live', async () => {
     for (const [args, nm, app] of [[{ club: 'the demo club', event: 'Comrades' }, 'RunFast Demo Club', 'runfast'], [{ club: 'Coast Riders', event: 'Coast Classic' }, 'Coast Riders (demo)', 'windline'], [{ club: 'RunFast Demo Club' }, 'RunFast Demo Club', 'runfast'], [{ club: 'Coast Riders' }, 'Coast Riders (demo)', 'windline']]) {
