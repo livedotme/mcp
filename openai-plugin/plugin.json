@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "livedot",
-  "version": "1.0.2",
-  "description": "Live race tracking, race-day weather and course flyovers for running and cycling, from livedot (Windline for cycling, RunFast for running).",
+  "version": "1.0.5",
+  "description": "Where someone is in a live running or cycling race, running and cycling clubs near you, coaches near you, and race-day weather, from livedot (Windline for cycling, RunFast for running).",
   "author": {
     "name": "livedot",
     "url": "https://livedot.me"
@@ -11,8 +11,8 @@
     "com.openai": {
       "interface": {
         "displayName": "livedot",
-        "shortDescription": "Live race tracking + weather",
-        "longDescription": "livedot brings live race tracking into ChatGPT. Ask \"Where's Megan in the Comrades?\" and get her km, her time against her goal, her finish time and the weather where she is, with a live map. When a name fits many people, livedot shows the likeliest few and asks one short question instead of guessing.\n\nBefore race day it gives the weather along the course at the times runners and riders get there (the live forecast within 10 days, 10 years of weather on the date beyond), a flyover of the course, and a cycling tour's days with route files when the organiser shares them.\n\nOrganisers can sign in with their Windline or RunFast account to create events as drafts, add tour notes, post club rides and publish after confirming. Cycling on Windline, running on RunFast. Only people who chose to be findable on public races are shown, and no position is shared near the start or finish or when someone has stopped. Free, thanks to ProLend.",
+        "shortDescription": "Live races, clubs and coaches",
+        "longDescription": "Ask \"Where's Megan in the Comrades?\" and livedot shows where she is right now: her km, her time against her goal, her finish time and the weather where she is, on a live map that updates itself. When a name fits many people, it shows the likeliest few and asks one short question instead of guessing. Follow a whole club or a coach's athletes in a race, and give someone a tap on the back that buzzes on their phone.\n\nFind a running or cycling club near you: \"Which cycling club should I join in Johannesburg?\", \"Beginner running club near Fourways\". Each club comes with its weekly rides or runs, the weather for the next one, and how to join.\n\nFind a coach or training group near you: \"Personal cycling trainer in Johannesburg\", \"Running coach near Sandton\". Each comes with what they coach, 1-on-1 or group, their next session with its weather, and how to book.\n\nPlan ahead: race-day weather along the course (the forecast within 10 days, 10 years of weather on the date beyond), a flyover of the course, the weather along a GPX route you share, and races, tours and club rides near you. Organisers sign in with Windline or RunFast to make events as drafts and publish after confirming.\n\nCycling on Windline, running on RunFast. Only people who chose to be findable on public races are found by name; no position near the start or finish or when someone has stopped. Free, thanks to ProLend.",
         "developerName": "livedot",
         "category": "Sports",
         "capabilities": [],
@@ -21,9 +21,9 @@
         "privacyPolicyURL": "https://livedot.me/privacy",
         "termsOfServiceURL": "https://livedot.me/terms",
         "defaultPrompt": [
-          "Where's the demo runner in the Comrades demo?",
-          "Fly the Comrades",
-          "What will the weather be like for the NYC Marathon?"
+          "Where's Megan in the Comrades?",
+          "Cycling clubs in Johannesburg",
+          "Find a coach near Fourways"
         ],
         "brandColor": "#0B1B2B",
         "brandColorDark": "#2FD39B",
@@ -40,34 +40,34 @@
         "test_cases": {
           "positive": [
             {
-              "description": "Find a runner in a live race",
-              "prompt": "Where's the demo runner in the Comrades demo?",
+              "description": "Find a runner in a live race, with several matches",
+              "prompt": "Where's Megan in the Comrades?",
               "tools_triggered": "find_person",
-              "expected_behavior": "Answers with Megan N. (demo): her km of 90 km, time against her goal, finish estimate and the weather where she is, with a live map widget and a Follow live link."
+              "expected_behavior": "Shows the 5 likeliest Megans in the Comrades (demo) as a picker and asks one short question; never guesses. Picking Megan Naidoo shows her live card: km of 90 km, time against her goal, finish estimate, the heat where she is and on the road ahead, her club and coach line, a Follow live link and a tap on the back button."
             },
             {
-              "description": "How a live race is going",
-              "prompt": "How's the Coast Classic demo going?",
-              "tools_triggered": "event_status",
-              "expected_behavior": "Says the race is live, how long it has run, how many are on the map, who is out front and the leaders, with the race map widget."
+              "description": "A coach's athletes in a race",
+              "prompt": "How are Coach Nadia's runners doing in the Comrades?",
+              "tools_triggered": "club_in_race",
+              "expected_behavior": "Shows Coach Nadia Pillay's 8 demo runners on one live map with who is out front, how many finished, and each runner's km and goal gap; tapping a runner opens their card."
             },
             {
-              "description": "Fly a course",
-              "prompt": "Fly the Comrades",
-              "tools_triggered": "fly_route",
-              "expected_behavior": "Shows the Comrades (demo) course flyover widget with the weather along the course and links to fly it in 3D and open on livedot."
+              "description": "Find a club near a place",
+              "prompt": "Cycling clubs in the Johannesburg area",
+              "tools_triggered": "find_clubs",
+              "expected_behavior": "Lists ProLend Cycling Club with its distance, its rides and the weather for the next one, with a Join link."
             },
             {
-              "description": "Race-day weather beyond the forecast",
-              "prompt": "What will the weather be like for the NYC Marathon?",
-              "tools_triggered": "event_weather",
-              "expected_behavior": "Gives typical race-day weather from 10 years of data (or the live forecast within 10 days), clearly labelled, with the rating and a link to livedot's guide."
+              "description": "Find a coach near a place",
+              "prompt": "Coaches near Fourways",
+              "tools_triggered": "find_coaches",
+              "expected_behavior": "Lists Coach Sipho Dlamini (demo): what he coaches and how, the next group session with its weather, Book / contact and See their page. Qualifications are the coach's own words."
             },
             {
-              "description": "A cycling tour's route",
-              "prompt": "What's the ProLend 2027 Durban Tour route? Give me the GPX files.",
-              "tools_triggered": "tour_route",
-              "expected_behavior": "Lists the 6 days with distances and the map, and says the organiser hasn't made the route files available (no made-up links)."
+              "description": "Weather along a route the user shares",
+              "prompt": "What's the weather along this ride on Saturday at 6am? https://windline.tech/api/event/tour/tsf-2026/day/5.gpx",
+              "tools_triggered": "plan_route",
+              "expected_behavior": "Gives the weather along the route timed to a rider at 25 km/h, a Good / Fair / Tough rating, the wind by stretch, and a flyover of the route in the card."
             }
           ],
           "negative": [
@@ -85,10 +85,10 @@
             }
           ]
         },
-        "demo_recording_url": "REPLACE_WITH_VIDEO_URL"
+        "demo_recording_url": "https://customer-d781pxxwvknetdt6.cloudflarestream.com/d93c4ea7227cdcf4a2d68c08086dd1a4/watch"
       },
       "publication": {
-        "release_notes": "Server instructions published; a GPX or route file you attach goes to plan_route (weather along your route and a flyover), never mistaken for an event; clubs and events near a place; a club or team in a race."
+        "release_notes": "Coaches near a place (find_coaches); a coach's athletes in a race; each athlete's club and coach line; wider club, event and coach searches; full names by livedot handle; own rides and runs (Ride live, Run live) by handle; team map dots name each person."
       }
     }
   }

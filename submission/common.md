@@ -1,7 +1,7 @@
 # Shared copy
 
 - **Name:** livedot MCP (display name in apps: **livedot**)
-- **Server URL:** `https://livedot.me/mcp` · Streamable HTTP · no authentication · read-only
+- **Server URL:** `https://livedot.me/mcp` · Streamable HTTP · asking needs no sign-in; organisers sign in with OAuth for their own events
 - **Website:** https://livedot.me/mcp
 - **Repository:** https://github.com/livedotme/mcp
 - **Privacy policy:** https://livedot.me/privacy
@@ -27,15 +27,17 @@ livedot covers cycling races on Windline and running races on RunFast. The weath
 
 **Keywords:** live tracking, race tracker, marathon tracker, cycling, running, Comrades, marathon weather, race-day weather, cycling tour GPX, flyover
 
-## Test prompts and expected answers
+## Test prompts and expected answers (18 Oct, as production answers today)
 
-These use the apps' demo races (always live) and published data, so they work any day.
+These use the apps' demo races (always live while `config/demo.listed` is on) and published data, so they work any day.
 
-1. **"Where's the demo runner in the Comrades demo?"** → `find_person`. One person, Megan N. (demo), answered at once: "Megan N. (demo) is at km … of 90 km in the Comrades (demo) … Where Megan is: …° … At this pace Megan finishes around …", a Follow live link and the live map (course, dot, the heat along it). The tool's text ends with "Live tracking, proudly brought to you free thanks to ProLend."
-2. **"How's the Coast Classic demo going?"** → `event_status`. "Coast Classic (demo) is live: under way for … 150 riders on livedot's map. Out front: … Leaders on the public map: …", the race map with the leaders' dots, Watch the race.
-3. **"Fly the Comrades"** → `fly_route`. "Here's the Comrades Marathon (demo) course from the air: 90 km (56 mi), with the weather along it." The widget flies the course; Fly it in 3D and Open on livedot.
-4. **"What will the weather be like for the NYC Marathon?"** → `event_weather`. Before 22 Oct 2026: "Based on 10 years of weather on this date (Copernicus ERA5, 2015–2024), not a forecast. Rated Good …" From 22 Oct: "Forecast from Apple Weather, timed to the course." Links to livedot.me/guides/nyc-marathon-2026-weather/.
-5. **"What's the ProLend 2027 Durban Tour route? Give me the GPX files."** → `tour_route`. "ProLend 2027 Durban Tour: 6 days, 771 km (479 mi). Day 1: Johannesburg to Villiers, 164 km …" and "The organiser hasn't made the route files available." (no file link is made up).
-6. **"Where's Zebedee Quux in the Comrades?"** → `find_person`. An honest "I couldn't find anyone called … who is findable on a live race", with how to follow someone by their livedot link.
+1. **"Where's Megan in the Comrades?"** → `find_person`. Several Megans: the 5 likeliest and one short question. Pick **Megan Naidoo** → her live card: km of 90, time against her goal, finish time, the heat there and on the road ahead, "ProLend Cycling Club · Coach Nadia Pillay" under her name, Follow live, and **Give Megan a tap on the back**.
+2. **"How are Coach Nadia's runners doing in the Comrades?"** → `club_in_race` (coach). Her 8 runners on one map (hover a dot for the name, tap for their card), on the course / finished / out front.
+3. **"Cycling clubs in the Johannesburg area"** → `find_clubs`. ProLend Cycling Club, its rides and the weather for the next one.
+4. **"Coaches near Fourways"** → `find_coaches`. Coach Sipho Dlamini (demo): what he coaches and how, the next group session with its weather, Book / contact.
+5. **"What's the weather along this ride on Saturday at 6am? https://windline.tech/api/event/tour/tsf-2026/day/5.gpx"** → `plan_route`. The weather along the route timed to a rider at 25 km/h, a rating, and a flyover in the chat.
+6. **"Fly the Comrades"** → `fly_route`. The course from the air, coloured by the weather.
+7. **"Where's Zebedee Quux in the Comrades?"** → `find_person`. An honest "couldn't find anyone" with how to follow someone by their livedot link.
+8. **Signed in with the reviewer account: "Show my events"** → `list_my_events`; **"Make this a private ride: <the link in 5>"** → `create_event` returns the plan first, then a draft on a yes. Nothing is published without a yes.
 
 **Note:** the demo races are the apps' own and stay on unless HQ switches them off (`config/demo`). Keep them on while a review is open.

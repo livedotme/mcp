@@ -4,16 +4,16 @@
 
 # livedot MCP
 
-**Live race tracking, in ChatGPT and Claude.**
+**Live races, clubs and coaches, in ChatGPT and Claude.**
 
-Ask where someone is in a race, how it's going, or what race day will be like, and get the answer with a live map in the chat.
+Ask where someone is in a live race (“Where's Megan in the Comrades?”), which running or cycling club to join near you (“Which cycling club should I join in Johannesburg?”), or for a coach near you (“Running coach near Sandton”), and get the answer with a live map and the weather in the chat.
 
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-me.livedot%2Fmcp-0B1B2B)](https://registry.modelcontextprotocol.io/v0/servers?search=me.livedot)
 [![Smithery](https://img.shields.io/badge/Smithery-livedot-2FD39B)](https://smithery.ai/server/livedot)
 [![Glama](https://img.shields.io/badge/Glama-livedot%20MCP-635BFF)](https://glama.ai/mcp/servers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-0B1B2B)](LICENSE)
 
-`https://livedot.me/mcp` · free · no sign-in · read-only
+`https://livedot.me/mcp` · free · asking needs no sign-in
 
 </div>
 

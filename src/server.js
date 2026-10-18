@@ -231,7 +231,7 @@ const INSTRUCTIONS = 'livedot: live race tracking and route weather for runners 
   + 'For how a race, a club or a coach\'s athletes are doing, use event_status or club_in_race (with coach for "Coach Nadia\'s runners in the Comrades"); for a race\'s weather, event_weather; to fly a course, fly_route; for a cycling tour, tour_route (tour_notes for the organiser\'s notes); for clubs or events near a place, find_clubs or find_events; for a coach, trainer, coaching or training group, find_coaches, never find_clubs. '
   + 'Each answer has a card; don\'t restate the whole card. Only public data: findable people on public races. Organisers can sign in (OAuth) to draft their own events; nothing is published without the user\'s yes.';
 
-export const DESCRIPTION = 'Live race tracking in the chat: where someone is in a live cycling or running race, the weather on the course from Windline\'s forecast engine, race-day forecasts and a flyover of the course, with a live map. Free.';
+export const DESCRIPTION = 'Where someone is right now in a live running or cycling race, with a live map; running and cycling clubs near you; coaches and training groups near you; and race-day weather and course flyovers. Windline for cycling, RunFast for running. Free.';
 const SERVER_INFO = { name: 'livedot', title: 'livedot MCP', version: VERSION, description: DESCRIPTION, websiteUrl: 'https://livedot.me/mcp',
   icons: [{ src: ICON, mimeType: 'image/svg+xml', sizes: ['any'] }, { src: ICON_PNG, mimeType: 'image/png', sizes: ['512x512'] }] };
 const CAPABILITIES = { tools: { listChanged: false }, resources: { listChanged: false }, prompts: { listChanged: false } };

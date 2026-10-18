@@ -1,11 +1,14 @@
 {
   "name": "@livedotme/mcp",
   "version": "1.0.0",
-  "description": "livedot MCP: ask ChatGPT or Claude where someone is in a live race, with the weather where they are and a live map.",
+  "description": "livedot MCP: ask ChatGPT or Claude where someone is in a live race, which running or cycling club to join near you, or for a coach near you, with live maps and the weather.",
   "type": "module",
   "license": "MIT",
   "homepage": "https://livedot.me/mcp",
-  "repository": { "type": "git", "url": "https://github.com/livedotme/mcp.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/livedotme/mcp.git"
+  },
   "mcpName": "me.livedot/mcp",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -14,5 +17,17 @@
     "fixtures": "node test/fixture-api.mjs",
     "test": "node test/smoke.mjs"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "cycling club",
+    "cycling coach",
+    "find a club",
+    "live tracking",
+    "personal trainer",
+    "race tracker",
+    "running club",
+    "running coach"
+  ]
 }
