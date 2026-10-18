@@ -127,6 +127,16 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .near .go{flex:none;height:34px;padding:0 14px;margin-top:2px;font-size:13.5px}
 .near .run .av{color:var(--run-ink)}
 .skel{height:300px;display:grid;place-items:center;color:var(--muted);font-size:13px}
+/* the loading skeleton, until the answer arrives: a card's shape, never "Loading the live map" on a list (coaches directive, 18 Oct) */
+.sk{padding:16px}.sk i,.sk b,.sk em{display:block;background:var(--soft);border-radius:8px;animation:skp 1.4s ease-in-out infinite}
+.sk .skh{display:flex;align-items:center;gap:12px;margin-bottom:18px}.sk .skh i{width:40px;height:40px;border-radius:12px}.sk .skh b{height:14px;width:46%}
+.sk .skr{display:flex;gap:12px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}.sk .skr i{width:44px;height:44px;border-radius:50%;flex:none}.sk .skr span{flex:1;display:grid;gap:7px}.sk .skr b{height:12px;width:58%}.sk .skr em{height:10px;width:82%}
+.sk p{margin:10px 0 0;color:var(--muted);font-size:13px}
+@keyframes skp{50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.sk i,.sk b,.sk em{animation:none}}
+.near .quals{display:block;color:var(--muted);font-size:12.5px;margin-top:4px}
+.near .nx b{font-weight:600;color:var(--ink)}.near .nx.lb{align-items:flex-start}.near .nx.lb i{margin-top:6px}
+@media (max-width:480px){.near.coaches li{flex-wrap:wrap}.near.coaches .mid{flex:1 1 calc(100% - 46px)}.near.coaches .go{order:3;margin:2px 0 0 46px}}
 /* a club in a race: the club's mark, its people as a grid of faces (tap one for their card) */
 .cmark{width:40px;height:40px;flex:none;border-radius:11px;display:grid;place-items:center;font:800 14px/1 var(--font);letter-spacing:-.02em;position:relative;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
 :root[data-theme="dark"] .cmark{box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
@@ -177,7 +187,7 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
-<div id="root"><div class="card"><div class="skel">Loading the live map…</div></div></div>
+<div id="root"><div class="card sk" aria-busy="true"><div class="skh"><i></i><b></b></div><div class="skr"><i></i><span><b></b><em></em></span></div><div class="skr"><i></i><span><b></b><em></em></span></div><div class="skr"><i></i><span><b></b><em></em></span></div><p>Loading…</p></div></div>
 <script>
 (function () {
 'use strict';
@@ -477,15 +487,17 @@ function picker(v) {
 function bioHost(u) { try { return /(^|\.)biotree\.bio$/i.test(new URL(u).hostname); } catch (e) { return false; } }
 function nearList(v) {
   var h = '<div class="card">' + head(v.title, v.subtitle, '');
-  h += '<ul class="near">' + v.items.map(function (x) {
+  h += '<ul class="near' + (v.list === 'coaches' ? ' coaches' : '') + '">' + v.items.map(function (x) {
     return '<li class="' + (x.app === 'runfast' ? 'run' : '') + '">' + avatarOf(x.name, x.photo, null) + '<span class="mid"><button type="button" class="nm" data-open="' + esc(x.url) + '">' + esc(x.name) + '</button>'
       + '<span class="sub">' + esc(x.sub) + '</span>' + (x.line ? '<span class="ln">' + esc(x.line) + '</span>' : '')
       + (x.tags && x.tags.length ? '<span class="tags">' + x.tags.map(function (t) { return '<span' + (/^(Beginners|Open to anyone)/.test(t) ? ' class="yes"' : '') + '>' + esc(t) + '</span>'; }).join('') + '</span>' : '')
-      + (x.next ? '<span class="nx"><i class="' + esc(x.weather || '') + '"></i>' + esc(x.next) + '</span>' : '')
-      + (x.links && /^https:\/\//i.test(String(x.links.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.links.url) + '">' + (bioHost(x.links.url) ? '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAqCAYAAADFw8lbAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAKqADAAQAAAABAAAAKgAAAADUGqULAAAC6klEQVRYCe2X70tTURjHv3f3zulm3U0tl9kkKyWx5ZtKjcI07EUgRBBW9Kai1xFE/0oQIb2P3hQUYWn1amGCP3JRJmiZS1Yz9iN1u1vnuTUxdb/OuS5Gey7j/jjPOeez732e85wrJZihAMxUAIw6YhHU6DdVVLSoqNEKGD3e/xOjX3/MI7IUMVrAdeMp655keBBaCmHo4zAiy2HMBXwYmR7F1c7LcLsOZOgp1pw76GIInkkPtLiGaf8n5KsC5xyjTtWJWz03ceHoeSgmGZIkplS2vXMGTQ4c1aJIsCNfxg2aL8DkPAUDmnMyJf/h6rOE34Ea02LwB/0Is+WqRDGjsrwSVot1tSv3tTAoQWoJDS+9r/BsfACBcADL2rK+GlSUV6Clzo1T7m7YbXZuSOooDKrICu57HqDUXIqOpuNwVbkQY4n29rMXgxMv8HS0X7++1nUFtRW13LDCoPS692yvZ8tVLyxmywpIY00j6qt34+5AH3wLPvQN3sON09dhs9hWfHK5EE4mWqIO7z30F2QSoKXuINr3tbJbCTOsOFB48JowKE1MVSqVtTa06oklyzLeTA2D1l8eMwQ03cQ77E44bA6mqQR/6BsCoUA695Rtmw5KSaZat+qrQDQWRZDtFXhs00EJimAplvUjEefhRF5AtT9wiknhLgCbDkqJFvwZ1FVUrSqoCPCYIaDp9qRUUulHwE079+th8E9ACTIQXkg5t2fyNUIsgdQyFSeaO1L6ZWoQVjTO4m9oamjDtfT93Af0jz+HzDbYZ4+cgVOtzsSTsp27hJKSVD6p+kzMenG7/w663SexbUsVFqNLGJsZw8PhR+wLQMKlYxfR3tCWEiKbBolNyLVNn/3+BQMTg+htOwfv7Ds8HnmCefZFKkkmkMqU4c27mtDV3IkaR002LGl9uEE3GpW2eJThimxm1ciOspKyjdy4nhkKykWQZSfhZMpyHmG3IqiwhGsGKCq6RhDh26KiwhKuGaBgFP0F4Ub4fC0g3MwAAAAASUVORK5CYII=" alt="" width="14" height="14">' : '') + 'Club links</button>' : '') + '</span>'
+      + (x.quals ? '<span class="quals">Qualifications, as they state them: ' + esc(x.quals) + '</span>' : '')
+      + (x.next ? '<span class="nx' + (x.nextLabel ? ' lb' : '') + '"><i class="' + esc(x.weather || '') + '"></i>' + (x.nextLabel ? '<span><b>' + esc(x.nextLabel) + ':</b> ' + esc(x.next) + '</span>' : esc(x.next)) + '</span>' : '')
+      + (x.links && /^https:\/\//i.test(String(x.links.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.links.url) + '">' + (bioHost(x.links.url) ? '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACoAAAAqCAYAAADFw8lbAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAKqADAAQAAAABAAAAKgAAAADUGqULAAAC6klEQVRYCe2X70tTURjHv3f3zulm3U0tl9kkKyWx5ZtKjcI07EUgRBBW9Kai1xFE/0oQIb2P3hQUYWn1amGCP3JRJmiZS1Yz9iN1u1vnuTUxdb/OuS5Gey7j/jjPOeez732e85wrJZihAMxUAIw6YhHU6DdVVLSoqNEKGD3e/xOjX3/MI7IUMVrAdeMp655keBBaCmHo4zAiy2HMBXwYmR7F1c7LcLsOZOgp1pw76GIInkkPtLiGaf8n5KsC5xyjTtWJWz03ceHoeSgmGZIkplS2vXMGTQ4c1aJIsCNfxg2aL8DkPAUDmnMyJf/h6rOE34Ea02LwB/0Is+WqRDGjsrwSVot1tSv3tTAoQWoJDS+9r/BsfACBcADL2rK+GlSUV6Clzo1T7m7YbXZuSOooDKrICu57HqDUXIqOpuNwVbkQY4n29rMXgxMv8HS0X7++1nUFtRW13LDCoPS692yvZ8tVLyxmywpIY00j6qt34+5AH3wLPvQN3sON09dhs9hWfHK5EE4mWqIO7z30F2QSoKXuINr3tbJbCTOsOFB48JowKE1MVSqVtTa06oklyzLeTA2D1l8eMwQ03cQ77E44bA6mqQR/6BsCoUA695Rtmw5KSaZat+qrQDQWRZDtFXhs00EJimAplvUjEefhRF5AtT9wiknhLgCbDkqJFvwZ1FVUrSqoCPCYIaDp9qRUUulHwE079+th8E9ACTIQXkg5t2fyNUIsgdQyFSeaO1L6ZWoQVjTO4m9oamjDtfT93Af0jz+HzDbYZ4+cgVOtzsSTsp27hJKSVD6p+kzMenG7/w663SexbUsVFqNLGJsZw8PhR+wLQMKlYxfR3tCWEiKbBolNyLVNn/3+BQMTg+htOwfv7Ds8HnmCefZFKkkmkMqU4c27mtDV3IkaR002LGl9uEE3GpW2eJThimxm1ciOspKyjdy4nhkKykWQZSfhZMpyHmG3IqiwhGsGKCq6RhDh26KiwhKuGaBgFP0F4Ub4fC0g3MwAAAAASUVORK5CYII=" alt="" width="14" height="14">' : '') + 'Club links</button>' : '')
+      + (x.page && /^https:\/\//.test(String(x.page.url || '')) ? '<button type="button" class="lnk" data-open="' + esc(x.page.url) + '">' + esc(x.page.label) + ' →</button>' : '') + '</span>'
       + '<button type="button" class="btn go" data-open="' + esc(x.button.url) + '">' + esc(x.button.label) + '</button></li>';
   }).join('') + '</ul>';
-  h += '<div class="ft">' + (v.add ? '<button type="button" class="btn sec2" data-open="' + esc(v.add.url) + '">' + esc(v.add.label) + '</button>' : '') + '<span class="meta">' + (v.list === 'events' ? 'Weather: the forecast within 10 days, typical beyond.' : 'What each club chose to share on its page.') + (v.updated ? ' ' + metaHtml(v) : '') + '</span></div>';
+  h += '<div class="ft">' + (v.add ? '<button type="button" class="btn sec2" data-open="' + esc(v.add.url) + '">' + esc(v.add.label) + '</button>' : '') + '<span class="meta">' + (v.list === 'events' ? 'Weather: the forecast within 10 days, typical beyond.' : v.list === 'coaches' ? 'What each coach chose to share. Qualifications are their own words.' : 'What each club chose to share on its page.') + (v.updated ? ' ' + metaHtml(v) : '') + '</span></div>';
   if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>'; // only without a sign-in: a free account, one line
   h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
   root.innerHTML = h; seps(root); wire(); host.size();

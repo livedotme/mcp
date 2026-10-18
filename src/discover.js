@@ -1,4 +1,4 @@
-// find_clubs and find_events (Wes, 17 Oct: "best running club to join in Fourways"; directive handoffs/2026-10-17-find-clubs-events-
+// find_clubs, find_events and find_coaches (Wes, 17 Oct: "best running club to join in Fourways"; directive handoffs/2026-10-17-find-clubs-events-
 // directive.md §3 on Windline). Clubs, organisers and their public events near a place, from the apps' own public reads:
 //   GET windline.tech/api/clubs/near, /api/events/near   (cycling)
 //   GET runfast.tech/api/clubs/near,  /api/events/near    (running)
@@ -7,6 +7,9 @@
 // plan_route reads a route's towns), never sent to the apps as words. The weather on each row is the one engine's: the forecast
 // within its 10 days, else 10 years of weather on that date (eventweather.js weatherAt). Each row's Join (or I'm in) opens the
 // club or event page, where sign-in or a free account is the same step. The same rules for the demo as for everything else.
+// find_coaches (coaches directive, Windline handoffs/2026-10-18-coaches-directive.md): coaches and training groups, a club page with
+// coach: true, from GET /api/coaches/near on both apps. What they coach, how, their next group session with its weather, the
+// qualifications in their own words (never shown as verified or certified), Book / contact (their own link) and their livedot.me page.
 import { getJson, NAME } from './reads.js';
 import { unitsFor, hostRegion } from './words.js';
 import { weatherAt } from './eventweather.js';
@@ -19,6 +22,11 @@ const KINDS = { race: ['race'], tour: ['tour'], 'club ride': ['ride', 'run'], 'c
 // A club that isn't listed can ask to be added (Wes, 17 Oct): Windline's page application (cycling) and RunFast's Add your club (running)
 const r3 = (x) => Math.round(Number(x) * 1000) / 1000; // the place is rounded to about 100 m before it leaves livedot, so no server log holds the exact point (KPMG, 17 Oct)
 export const ADD_CLUB = { cycling: 'https://windline.tech/pages/?from=livedot-mcp#apply', running: 'https://runfast.tech/app/?ref=livedot-mcp#/clubs/add' };
+// A coach who isn't listed (coaches directive): "I'm a coach / training group" on the same two forms
+export const ADD_COACH = { cycling: 'https://windline.tech/pages/?for=coach&from=livedot-mcp#apply', running: 'https://runfast.tech/app/?ref=livedot-mcp#/clubs/add?for=coach' };
+const SPECIALTIES = ['road', 'mtb', 'gravel', 'triathlon', 'beginners', 'racing', 'marathon', 'ultra'], FORMATS = ['one-to-one', 'group', 'online'];
+const SPEC_WORDS = { road: 'road', mtb: 'MTB', gravel: 'gravel', triathlon: 'triathlon', beginners: 'beginners', racing: 'racing', marathon: 'marathon', ultra: 'ultra' }; // findnear.js SPECIALTIES
+const FORMAT_WORDS = { 'one-to-one': '1-on-1', group: 'small group', online: 'online' }; // findnear.js FORMAT_WORDS
 const addLine = (sport) => { const run = RUNNING.includes(sport) || sport === 'running', cyc = sport && !run;
   return `Run a club that isn't listed? Add it free: ${run ? `running ${ADD_CLUB.running}` : cyc ? `cycling ${ADD_CLUB.cycling}` : `cycling ${ADD_CLUB.cycling} · running ${ADD_CLUB.running}`}`; };
 const ROWS = 10, WEATHER_ROWS = 6, MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
@@ -36,7 +44,7 @@ export const discoverTools = ({ READ_ONLY, uiMeta }) => [
     description: 'Find running and cycling clubs near a place, e.g. best running club to join in Fourways, beginner cycling group near Sandton. '
       + 'Lists approved clubs and organisers on Windline (cycling) and RunFast (running) nearest first, with their weekly sessions, whether beginners are welcome, whether anyone can join (Open to anyone) or it\'s members only, their pace groups, their next session with its weather, the club\'s own links page when it has one, and a Join link to the club\'s page. '
       + 'Set beginners for "beginner friendly", "new to running", "for beginners"; set open for "open to anyone", "anyone can join", "no membership", "don\'t need to be a member". '
-      + 'Only clubs that have added their area show; never a person. Say what each club chose to share, and nothing more.',
+      + 'Only clubs that have added their area show; never a person. Say what each club chose to share, and nothing more. For coaches or personal trainers, use find_coaches.',
     inputSchema: {
       type: 'object',
       properties: { place: PLACE_ARG, sport: SPORT_ARG, beginners: { type: 'boolean', description: 'true when the user wants a beginner-friendly club ("beginner friendly", "new to cycling").' },
@@ -63,6 +71,26 @@ export const discoverTools = ({ READ_ONLY, uiMeta }) => [
     },
     annotations: { title: 'Find events near a place', ...READ_ONLY },
     _meta: uiMeta('Finding events near there…', 'Events'),
+  },
+  {
+    name: 'find_coaches',
+    title: 'Find a coach near a place',
+    description: 'Find cycling and running coaches and training groups near a place, e.g. personal cycling trainer in Johannesburg, running coach near Sandton, coaches near Fourways. '
+      + 'Use it for any coach, personal trainer, coaching or training group question (never find_clubs, which lists clubs). '
+      + 'Lists coaches and training groups on Windline (cycling) and RunFast (running) nearest first, with what they coach (road, MTB, gravel, triathlon, beginners, racing, marathon, ultra), how (1-on-1, small group, online), their next group session with its weather, whether beginners are welcome, the qualifications they state in their own words (livedot doesn\'t check them), a Book / contact link (their own) and their page. '
+      + 'Only coaches who listed themselves and added their area; never anyone else. Say what each coach chose to share, and nothing more.',
+    inputSchema: {
+      type: 'object',
+      properties: { place: PLACE_ARG, sport: { type: 'string', enum: ['cycling', 'running'], description: 'cycling or running. Leave it out for both.' },
+        specialty: { type: 'string', enum: SPECIALTIES, description: 'What the coach coaches, if the user said: road, mtb, gravel, triathlon, beginners, racing, marathon or ultra.' },
+        format: { type: 'string', enum: FORMATS, description: 'one-to-one for a personal trainer or private coaching, group for a training group or small group, online for remote coaching.' },
+        beginners: { type: 'boolean', description: 'true when the user is new to the sport ("for beginners", "new to running").' },
+        km: { type: 'number', description: 'How far from the place, in km (1 to 100). Leave it out for 25 km.' }, units: UNITS },
+      required: ['place'],
+      additionalProperties: false,
+    },
+    annotations: { title: 'Find a coach near a place', ...READ_ONLY },
+    _meta: uiMeta('Finding coaches near there…', 'Coaches'),
   },
 ];
 
@@ -226,11 +254,11 @@ export async function findClubs(ctx, args, sponsor) {
   if (P && P.ask) { const t = `Which do you mean: ${P.ask[0]}, or ${P.ask[1]}? Ask the user, then call again with the place and its country ("${P.ask[0]}").`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, places: P.ask }, map: null }; }
   if (!P) { const t = `I couldn't find "${String(args.place || '').slice(0, 60)}" on the map. Which suburb or town is it near?`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t }, map: null, miss: 'no_place' }; }
   const f = unitsFor(args.units, null, zoneAt([P.lat, P.lon]));
-  let km = Math.min(100, Math.max(1, Math.round(+args.km || 25))), wider = false;
+  let km = Math.min(100, Math.max(1, Math.round(+args.km || 25))), wider = false; const asked = km;
   const qs = (k) => `lat=${r3(P.lat)}&lon=${r3(P.lon)}&km=${k}${apiSport(sport) ? '&sport=' + apiSport(sport) : ''}${beginners ? '&beginners=true' : ''}`;
   let r = await near(R, 'clubs', appsFor(sport), qs(km));
   if (open && r.ok) r.list = r.list.filter((x) => x.openToAll === true); // the apps don't take it: only clubs that said Open to anyone
-  if (r.ok && !r.list.length && !args.km && km < 50) { km = 50; wider = true; r = await near(R, 'clubs', appsFor(sport), qs(km)); if (open && r.ok) r.list = r.list.filter((x) => x.openToAll === true); }
+  for (const k of [50, 100]) { if (!r.ok || r.list.length || km >= k) continue; km = k; wider = true; r = await near(R, 'clubs', appsFor(sport), qs(km)); if (open && r.ok) r.list = r.list.filter((x) => x.openToAll === true); } // nothing near: wider before "none", whatever distance was asked (Wes, 18 Oct)
   const what = `${open ? 'open-to-anyone ' : ''}${beginners ? 'beginner-friendly ' : ''}${sport && sport !== 'tours' ? SPORT_WORDS[sport] + ' ' : sport === 'tours' ? 'tour ' : ''}clubs`;
   if (!r.ok) { const t = `I couldn't reach the club lists just now. Try again in a moment.`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, error: t }, map: null }; }
   if (!r.list.length) {
@@ -239,7 +267,7 @@ export async function findClubs(ctx, args, sponsor) {
   }
   const rows = r.list.slice(0, ROWS).map((x) => ({ ...x, tz: tz0(x) }));
   await withWeather(R, rows, f, now);
-  const head = `${what[0].toUpperCase() + what.slice(1)} near ${P.label}, nearest first${wider ? ` (none within 25 km, so within ${f.dist(km)})` : ''}:`;
+  const head = `${what[0].toUpperCase() + what.slice(1)} near ${P.label}, nearest first${wider ? ` (none within ${f.dist(asked)}, so within ${f.dist(km)})` : ''}:`;
   const lines = rows.map((x, i) => {
     const bits = [`${i + 1}. ${x.name} (${NAME[x.app]}${x.kind === 'organiser' ? ', organiser' : ''}): ${distOf(x.km, f)}${x.area ? `, ${x.area.name}` : ''}.`];
     if (x.whoFor) bits.push(`For ${x.whoFor.replace(/^for\s+/i, '').replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase())}.`);
@@ -276,11 +304,11 @@ export async function findEvents(ctx, args, sponsor) {
   if (!P) { const t = `I couldn't find "${String(args.place || '').slice(0, 60)}" on the map. Which suburb or town is it near?`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t }, map: null, miss: 'no_place' }; }
   const tz = zoneAt([P.lat, P.lon]) || 'UTC', f = unitsFor(args.units, null, tz);
   const Wd = windowOf(args.when, tz, now), unknownWhen = args.when && !Wd;
-  let km = Math.min(100, Math.max(1, Math.round(+args.km || 50))), wider = false;
+  let km = Math.min(100, Math.max(1, Math.round(+args.km || 50))), wider = false; const asked = km;
   const qs = (k) => `lat=${r3(P.lat)}&lon=${r3(P.lon)}&km=${k}${apiSport(sport) ? '&sport=' + apiSport(sport) : ''}${Wd ? `&from=${Wd.from}&to=${Wd.to}` : ''}`;
   const pick = (list) => list.filter((x) => !kinds || kinds.includes(x.kind));
   let r = await near(R, 'events', appsFor(sport), qs(km)), list = pick(r.list);
-  if (r.ok && !list.length && !args.km && km < 100) { km = 100; wider = true; r = await near(R, 'events', appsFor(sport), qs(km)); list = pick(r.list); }
+  if (r.ok && !list.length && km < 100) { km = 100; wider = true; r = await near(R, 'events', appsFor(sport), qs(km)); list = pick(r.list); }
   const what = `${sport && sport !== 'tours' ? SPORT_WORDS[sport] + ' ' : ''}${args.kind === 'race' ? 'races' : args.kind === 'tour' || sport === 'tours' ? 'tours' : args.kind ? args.kind + 's' : 'events'}`;
   const when = Wd ? ` ${Wd.words}` : '';
   if (!r.ok) { const t = `I couldn't reach the event lists just now. Try again in a moment.`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, error: t }, map: null }; }
@@ -311,6 +339,61 @@ export async function findEvents(ctx, args, sponsor) {
     updated: W.updated, items: rows.map((x) => ({ name: x.name, photo: x.photo || null, app: x.app, sub: [`${longDay(x.start, x.tz)} ${hm(x.start, x.tz, f)}`, KIND_WORD[x.kind], x.club && x.club.name].filter(Boolean).join(' · '),
       line: [x.area && x.area.name ? `From ${x.area.name}` : '', distOf(x.km, f)].filter(Boolean).join(' · '), tags: x.beginnersWelcome ? ['Beginners welcome'] : [],
       next: x.weather ? x.weather.text : '', weather: x.weather ? x.weather.basis : null, url: x.url, button: { label: 'I\'m in', url: x.join || x.url } })),
+    sponsor, units: f.system };
+  return { text, structured: S, map };
+}
+
+// ---------------------------------------------------------------- find_coaches
+const coachLine = (x) => [(x.specialties || []).map((k) => SPEC_WORDS[k]).filter(Boolean).join(', '), (x.format || []).map((k) => FORMAT_WORDS[k]).filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+const capFirst = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+/** A coach's Book / contact: their own link (Biotree or their site, https only), else their page. */
+const bookOf = (x) => linksOf(x) || { url: pageOf(x), biotree: false, page: true };
+/** livedot.me/<slug>, the coach's page ("See their page"), from the app's address for it (livedot.me/<slug>#cycling). */
+const pageOf = (x) => { try { const u = new URL(x.url); return u.hostname === 'livedot.me' ? `https://livedot.me${u.pathname}` : x.url; } catch (e) { return x.url; } };
+const addCoachLine = (sport) => `Are you a coach? Get listed free: ${sport === 'running' ? `running ${ADD_COACH.running}` : sport === 'cycling' ? `cycling ${ADD_COACH.cycling}` : `cycling ${ADD_COACH.cycling} · running ${ADD_COACH.running}`}`;
+export async function findCoaches(ctx, args, sponsor) {
+  const { R, now } = ctx, sport = ['cycling', 'running'].includes(args.sport) ? args.sport : null, specialty = SPECIALTIES.includes(args.specialty) ? args.specialty : null;
+  const format = FORMATS.includes(args.format) ? args.format : null, beginners = args.beginners === true;
+  const P = await placeOf(args.place, placeHint(ctx.meta));
+  if (P && P.ask) { const t = `Which do you mean: ${P.ask[0]}, or ${P.ask[1]}? Ask the user, then call again with the place and its country ("${P.ask[0]}").`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, places: P.ask }, map: null }; }
+  if (!P) { const t = `I couldn't find "${String(args.place || '').slice(0, 60)}" on the map. Which suburb or town is it near?`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t }, map: null, miss: 'no_place' }; }
+  const f = unitsFor(args.units, null, zoneAt([P.lat, P.lon]));
+  let km = Math.min(100, Math.max(1, Math.round(+args.km || 25))), wider = false; const asked = km;
+  const qs = (k) => `lat=${r3(P.lat)}&lon=${r3(P.lon)}&km=${k}${specialty ? '&specialty=' + specialty : ''}${format ? '&format=' + format : ''}${beginners ? '&beginners=true' : ''}`;
+  let r = await near(R, 'coaches', appsFor(sport), qs(km));
+  for (const k of [50, 100]) { if (!r.ok || r.list.length || km >= k) continue; km = k; wider = true; r = await near(R, 'coaches', appsFor(sport), qs(km)); } // nothing near: wider before "none", as find_clubs
+  const what = `${beginners ? 'beginner-friendly ' : ''}${format === 'one-to-one' ? '1-on-1 ' : format === 'online' ? 'online ' : ''}${sport ? sport + ' ' : ''}${specialty ? SPEC_WORDS[specialty] + ' ' : ''}${format === 'group' ? 'training groups' : 'coaches'}`;
+  if (!r.ok) { const t = `I couldn't reach the coach lists just now. Try again in a moment.`; return { text: t + '\n\n' + sponsor, structured: { view: 'none', message: t, error: t }, map: null }; }
+  if (!r.list.length) {
+    const t = `I don't know any ${what} within ${f.dist(km)} of ${P.label} yet. Coaches show up here once they list themselves on Windline (cycling) or RunFast (running).`;
+    return { text: `${t}\n${addCoachLine(sport)}\n\n${sponsor}`, structured: { view: 'none', message: `${t}\n${addCoachLine(sport)}`, place: P.label, add_coach: ADD_COACH }, map: null };
+  }
+  const rows = r.list.slice(0, ROWS).map((x) => ({ ...x, tz: tz0(x) }));
+  await withWeather(R, rows, f, now);
+  const head = `${capFirst(what)} near ${P.label}, nearest first${wider ? ` (none within ${f.dist(asked)}, so within ${f.dist(km)})` : ''}:`;
+  const lines = rows.map((x, i) => {
+    const bits = [`${i + 1}. ${x.name} (${NAME[x.app]}): ${distOf(x.km, f)}${x.area ? `, ${x.area.name}` : ''}.`], cl = coachLine(x);
+    if (cl) bits.push(`Coaches ${cl}.`);
+    if (x.qualifications) bits.push(`Qualifications, as they state them: ${x.qualifications}.`);
+    if (x.beginnersWelcome) bits.push('Beginners welcome.');
+    const nx = nextLine(x, f, false); if (nx) bits.push(`Next group session: ${nx}.`);
+    const B = bookOf(x); bits.push(`Book / contact: ${B.url}`); if (!B.page) bits.push(`Their page: ${pageOf(x)}`);
+    return bits.join(' ');
+  });
+  const more = r.list.length > rows.length ? `\n${r.list.length - rows.length} more further out.` : '';
+  const W = credits(rows);
+  const text = `${head}\n${lines.join('\n')}${more}${W.line}\nEach coach's page shows what they chose to share; qualifications are in their own words, and livedot doesn't check them.\n${addCoachLine(sport)}\n\n${sponsor}`;
+  const runOnly = rows.every((x) => x.app === 'runfast');
+  const S = { view: 'coaches', place: P.label, km, sport, specialty, format, beginners, app: runOnly ? 'runfast' : 'windline', units: f.system, sponsor_line: sponsor, add_coach: ADD_COACH, basis: W.basis, forecast_updated: W.forecast_updated,
+    coaches: rows.map((x) => ({ id: x.id, app: x.app, name: x.name, url: pageOf(x), book: bookOf(x).url, photo: x.photo || null, km: x.km, area: x.area ? x.area.name : null, sports: x.sports || [],
+      specialties: x.specialties || [], format: x.format || [], qualifications: x.qualifications || null, beginners_welcome: !!x.beginnersWelcome, sessions: x.sessionsLine || null,
+      next: x.next ? { start: x.next.start, place: x.next.place || null, kind: x.next.kind, weather: x.weather ? x.weather.text : null, weather_basis: x.weather ? x.weather.basis : null } : null })) };
+  const map = { kind: 'list', list: 'coaches', sport: runOnly ? 'run' : 'ride', title: `${capFirst(what)} near ${P.name}`, subtitle: `${rows.length} nearest${wider ? `, within ${f.dist(km)}` : ''} · ${P.label}`,
+    items: rows.map((x) => { const B = bookOf(x);
+      return { name: x.name, photo: x.photo || null, app: x.app, sub: [distOf(x.km, f), x.area && x.area.name, NAME[x.app]].filter(Boolean).join(' · '), line: capFirst(coachLine(x)),
+        quals: x.qualifications || null, tags: [x.beginnersWelcome ? 'Beginners welcome' : ''].filter(Boolean), next: nextLine(x, f, false), nextLabel: 'Next group session', weather: x.weather ? x.weather.basis : null,
+        url: pageOf(x), page: { label: 'See their page', url: pageOf(x) }, button: { label: 'Book / contact', url: B.url, biotree: !!B.biotree } }; }),
+    updated: W.updated, add: { label: 'Are you a coach? Get listed free', url: sport === 'running' || runOnly ? ADD_COACH.running : ADD_COACH.cycling },
     sponsor, units: f.system };
   return { text, structured: S, map };
 }

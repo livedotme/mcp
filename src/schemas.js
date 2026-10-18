@@ -105,6 +105,11 @@ Object.assign(OUTPUT_SCHEMAS, {
   find_events: out(['events'], { ...NEAR, when: X('The window searched: { from, to } (YYYY-MM-DD), or null for the next four months.'),
     events: A('Soonest first: id, app, name, kind (ride, run, race, tour), url (its page), join (I\'m in), photo, km, start (ISO), area, club, sports, beginners_welcome, weather, weather_basis.') },
   'Public rides, runs, races and tours near a place, soonest first.'),
+
+  find_coaches: out(['coaches'], { ...NEAR, add_coach: X('Where a coach who isn\'t listed gets listed free: { cycling (Windline\'s page application, I\'m a coach), running (RunFast\'s Add your club, I\'m a coach) }.'),
+    specialty: SN('The specialty asked for, or null.'), format: SN('one-to-one, group or online, or null.'), beginners: B('Only coaches who welcome beginners.'),
+    coaches: A('Nearest first: id, app, name, url (their livedot.me page), book (Book / contact: their own link, or their page), photo, km, area, sports, specialties, format, qualifications (their own words, never checked), beginners_welcome, sessions (one line), next ({ start, place, kind, weather, weather_basis }).') },
+  'Coaches and training groups near a place, nearest first.'),
 });
 const WRITE = (views, description) => out(views, {
   app: SN('The account\'s app: windline or runfast.'),

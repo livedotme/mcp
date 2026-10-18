@@ -13,7 +13,7 @@ import { ago } from './words.js';
 import { OUTPUT_SCHEMAS, promptList, promptGet } from './schemas.js';
 import { BUILD } from './gen/build.js';
 import { parseLink } from './tools.js';
-import { discoverTools, findClubs, findEvents } from './discover.js'; // find_clubs, find_events: clubs and events near a place
+import { discoverTools, findClubs, findEvents, findCoaches } from './discover.js'; // find_clubs, find_events, find_coaches: clubs, events and coaches near a place
 
 export const VERSION = '1.0.0';
 const VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
@@ -187,7 +187,7 @@ export const TOOLS = [
   },
 ];
 
-TOOLS.push(...discoverTools({ READ_ONLY, uiMeta })); // find_clubs, find_events (discover.js)
+TOOLS.push(...discoverTools({ READ_ONLY, uiMeta })); // find_clubs, find_events, find_coaches (discover.js)
 // Read tools need no account; the write tools sign in (OAuth 2.1, writes.js). ChatGPT reads securitySchemes per tool.
 TOOLS.forEach((t) => { t.securitySchemes = t.name === 'tap_on_the_back' ? [{ type: 'noauth' }, { type: 'oauth2', scopes: [] }] : [{ type: 'noauth' }]; t._meta = { ...t._meta, securitySchemes: t.securitySchemes }; }); // a tap: anyone; signed in, it carries your name
 TOOLS.push(...WRITE_TOOLS);
@@ -200,7 +200,7 @@ const STATUS = {
   event_status: ['Reading the race…', 'Race ready'], club_in_race: ['Finding the team on the course…', 'Team ready'],
   event_weather: ['Reading the weather on the course…', 'Race-day weather ready'], fly_route: ['Preparing the flyover…', 'Flyover ready'],
   tour_route: ['Reading the tour…', 'Tour ready'], tour_notes: ['Reading the organiser\'s notes…', 'Notes ready'], tap_on_the_back: ['Sending the tap…', 'Tap sent'],
-  find_clubs: ['Finding clubs near there…', 'Clubs ready'], find_events: ['Finding events near there…', 'Events ready'],
+  find_clubs: ['Finding clubs near there…', 'Clubs ready'], find_events: ['Finding events near there…', 'Events ready'], find_coaches: ['Finding coaches near there…', 'Coaches ready'],
   plan_route: ['Reading your route and the weather…', 'Weather on your route ready'], list_my_events: ['Reading your events…', 'Your events'],
   create_event: ['Creating the draft…', 'Draft ready'], update_event: ['Saving the change…', 'Change saved'], add_tour_notes: ['Saving the tour notes…', 'Tour notes saved'],
   publish_event: ['Publishing…', 'Published'], post_club_ride: ['Creating the draft…', 'Draft ready'], invite_members: ['Reading the list…', 'Invites ready'],
@@ -226,11 +226,10 @@ const RESOURCE_META = {
 // The server's instructions (the initialize answer and the server card): short and functional, which tool for which ask. No steering
 // over other apps (OpenAI's rules).
 const INSTRUCTIONS = 'livedot: live race tracking and route weather for runners and cyclists (Windline for cycling, RunFast for running). '
-  + 'When the user shares a GPX file, a route link or a route\'s points and asks about the weather, wind, heat, a flyover or a video, call plan_route (pass an attached file as gpx_file; if you can read the file yourself, you may pass its text as gpx or its points as points). Never treat a file name as an event name. '
+  + 'When the user shares a GPX file, a route link or a route\'s points and asks about the weather, wind, heat, a flyover or a video, call plan_route (pass an attached file as gpx_file; or, if you can read it, its text as gpx or its points as points). Never treat a file name as an event name. '
   + 'When they ask where someone is in a race, call find_person, then where_is with the person id; if several people match, ask one short question and never guess. '
-  + 'For a coach\'s athletes in a race ("Coach Nadia\'s runners in the Comrades"), call club_in_race with coach. '
-  + 'For how a race or a club is doing, use event_status or club_in_race; for a race\'s weather, event_weather; to fly a course, fly_route; for a cycling tour, tour_route (tour_notes for the organiser\'s notes); for clubs or events near a place, find_clubs or find_events. '
-  + 'Each answer has a card; don\'t restate the whole card. Only public data: findable people on public races. Organisers can sign in (OAuth) to make drafts of their own events; nothing is published without the user\'s yes.';
+  + 'For how a race, a club or a coach\'s athletes are doing, use event_status or club_in_race (with coach for "Coach Nadia\'s runners in the Comrades"); for a race\'s weather, event_weather; to fly a course, fly_route; for a cycling tour, tour_route (tour_notes for the organiser\'s notes); for clubs or events near a place, find_clubs or find_events; for a coach, trainer, coaching or training group, find_coaches, never find_clubs. '
+  + 'Each answer has a card; don\'t restate the whole card. Only public data: findable people on public races. Organisers can sign in (OAuth) to draft their own events; nothing is published without the user\'s yes.';
 
 export const DESCRIPTION = 'Live race tracking in the chat: where someone is in a live cycling or running race, the weather on the course from Windline\'s forecast engine, race-day forecasts and a flyover of the course, with a live map. Free.';
 const SERVER_INFO = { name: 'livedot', title: 'livedot MCP', version: VERSION, description: DESCRIPTION, websiteUrl: 'https://livedot.me/mcp',
@@ -250,6 +249,7 @@ ${DESCRIPTION}
 - How a club or team is doing in a race ("How's the UCT team doing in the Comrades?"): club_in_race. Its card shows each member; tap one for their card.
 - The weather for an event: event_weather. Fly over a course: fly_route.
 - A club to join near a place ("best running club to join in Fourways", "beginner cycling group near Sandton"): find_clubs. Rides, runs, races and tours near a place and when ("trail runs near Cape Town in November", "cycle tours around Johannesburg"): find_events. Clubs and organisers only, never a person; Join (or I'm in) opens their page.
+- A coach, personal trainer or training group near a place ("personal cycling trainer in Joburg", "running coach near Sandton"): find_coaches. Qualifications are the coach's own words; livedot never verifies them.
 - A Windline cycling tour's days and route files: tour_route; the organiser's notes for riders: tour_notes (beta).
 - The weather along your own route (a GPX file or a Ride with GPS link): plan_route.
 - Organisers and club admins, signed in (OAuth): list_my_events, create_event, update_event, add_tour_notes, publish_event, post_club_ride. New events are drafts; nothing is published without the user's yes.
@@ -281,7 +281,7 @@ const err = (id, code, message) => ({ jsonrpc: '2.0', id: id == null ? null : id
 
 // The free paths (no sign-in): one line to a free account in the app that fits the sport, before the sponsor line, measured by ?ref=mcp.
 // Never on a signed-in answer, never on an answer with nothing in it.
-const FREE = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'tap_on_the_back', 'find_clubs', 'find_events']);
+const FREE = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'plan_route', 'tap_on_the_back', 'find_clubs', 'find_events', 'find_coaches']);
 export const SIGNUP = {
   windline: { label: 'Plan it in Windline, free: create your account', url: 'https://app.windline.tech/?ref=mcp#/signup' },
   runfast: { label: 'Plan it in RunFast, free: create your account', url: 'https://runfast.tech/app/?ref=mcp#/signup' },
@@ -301,7 +301,7 @@ async function sha256hex(s) { const d = await crypto.subtle.digest('SHA-256', ne
 // the proxy secret; mcpMisses, 14 days), for HQ's "livedot misses". What it holds: the tool, what was asked and the event (80 characters
 // each, a follow link's code never), the outcome, the counts, which app servers were asked and how they answered, the time, this build.
 // Never an address, an account, the assistant's user id, a token. Sent after the answer (waitUntil), and never in the way of one.
-const MISS_TOOLS = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events']);
+const MISS_TOOLS = new Set(['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events', 'find_coaches']);
 const cap80 = (s) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
 /** What was asked, as typed, but never a follow link's code (it lets its holder tap): those become "[follow link]". */
 function askedOf(a) {
@@ -338,7 +338,7 @@ async function call(name, args, meta, env, rq = {}) {
   try {
     if (fn) out = await fn(ctx, args || {});
     else if (name === 'plan_route') out = await planRoute(ctx, args || {}, await sponsorLineFor(R));
-    else if (name === 'find_clubs' || name === 'find_events') out = await (name === 'find_clubs' ? findClubs : findEvents)(ctx, args || {}, await sponsorLineFor(R));
+    else if (name === 'find_clubs' || name === 'find_events' || name === 'find_coaches') out = await ({ find_clubs: findClubs, find_events: findEvents, find_coaches: findCoaches }[name])(ctx, args || {}, await sponsorLineFor(R));
     else if (SCOPE[name]) out = await writeTool(ctx, name, args || {}, await sponsorLineFor(R));
     else return null;
   } catch (e) {

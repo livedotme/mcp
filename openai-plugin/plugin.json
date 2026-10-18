@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "livedot",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Live race tracking, race-day weather and course flyovers for running and cycling, from livedot (Windline for cycling, RunFast for running).",
   "author": {
     "name": "livedot",

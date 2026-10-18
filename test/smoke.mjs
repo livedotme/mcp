@@ -22,7 +22,7 @@ let n = 0;
 const TOWNS = [[-34.18, 'Mossel Bay'], [-34.08, 'George'], [-33.98, 'Wilderness'], [-33.88, 'Knysna'], [-33.78, 'Plettenberg Bay'], [-33.68, 'Storms River']];
 const realFetch = globalThis.fetch, PHOTON = [], PHOTON_Q = [];
 // find_clubs / find_events: a place's name to a point (Photon's search), stubbed the same way
-const PLACES = { fourways: [-26.0106, 28.0104, 'Fourways', 'suburb'], johannesburg: [-26.2041, 28.0473, 'Johannesburg', 'city'], 'cape town': [-33.9249, 18.4241, 'Cape Town', 'city'] };
+const PLACES = { fourways: [-26.0106, 28.0104, 'Fourways', 'suburb'], sandton: [-26.107, 28.056, 'Sandton', 'suburb'], johannesburg: [-26.2041, 28.0473, 'Johannesburg', 'city'], 'cape town': [-33.9249, 18.4241, 'Cape Town', 'city'] };
 globalThis.fetch = (u, o) => { const s = String(u && u.url || u); if (!s.startsWith('https://photon.komoot.io/')) return realFetch(u, o); const q = new URL(s), lat = +q.searchParams.get('lat');
   if (q.pathname === '/api/') { PHOTON_Q.push(s); const fx = path.join(DIR, 'fixtures', 'photon', String(q.searchParams.get('q')).toLowerCase().replace(/\s+/g, '-') + '.json'); // Photon's real answers, recorded (test/fixtures/photon)
     if (!PLACES[String(q.searchParams.get('q')).toLowerCase()] && fs.existsSync(fx)) return Promise.resolve(new Response(fs.readFileSync(fx, 'utf8'), { headers: { 'Content-Type': 'application/json' } }));
@@ -51,7 +51,7 @@ try {
     assert.equal(i.body.result.protocolVersion, '2025-06-18'); assert.equal(i.body.result.serverInfo.title, 'livedot MCP');
     assert.equal((await post({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
     const t = (await post({ jsonrpc: '2.0', id: 2, method: 'tools/list' })).body.result.tools;
-    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
+    assert.deepEqual(t.map((x) => x.name), ['find_person', 'where_is', 'event_status', 'club_in_race', 'event_weather', 'fly_route', 'tour_route', 'tour_notes', 'tap_on_the_back', 'find_clubs', 'find_events', 'find_coaches', 'plan_route', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'invite_members']);
     t.forEach((x) => assert.ok(!/word for word/.test(x.description), 'a repeat-this instruction')); t.filter((x) => !['tour_notes', 'list_my_events', 'create_event', 'update_event', 'add_tour_notes', 'publish_event', 'post_club_ride', 'plan_route', 'tap_on_the_back', 'invite_members'].includes(x.name)).forEach((x) => { assert.equal(x._meta.ui.resourceUri, WURI); assert.equal(x.annotations.readOnlyHint, true); assert.match(x.inputSchema.properties.units.description, /imperial for users in the US/); });
     const r = (await post({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0];
     assert.equal(r.mimeType, 'text/html;profile=mcp-app'); assert.ok(r._meta.ui.csp.resourceDomains.length);
@@ -248,6 +248,44 @@ try {
     const u = new URL(PHOTON_Q[n0]); assert.equal(u.searchParams.get('lat'), '-26.01'); assert.equal(u.searchParams.get('lon'), '28.05'); // the bias, rounded: the asker's point never leaves at full precision
     assert.equal(placeHint({ 'openai/locale': 'en-ZA' }).lat, -29); assert.equal(placeHint({}), null);
   });
+  await test('find_coaches: "personal cycling trainer in Fourways": coaches only, what they coach, Book / contact, See their page, never a badge', async () => {
+    let r = await call('find_coaches', { place: 'Fourways', sport: 'cycling', format: 'one-to-one' }), s = r.structuredContent, t = r.content[0].text, v = r._meta['livedot/view'];
+    assert.equal(s.view, 'coaches'); assert.deepEqual(s.coaches.map((c) => c.name), ['Coach Sipho Dlamini', 'Ride Strong Coaching']); // never a club (the apps keep coaches out of clubs/near and clubs out of coaches/near)
+    assert.deepEqual([s.coaches[0].url, s.coaches[0].book, s.coaches[1].book], ['https://livedot.me/coach-sipho-dlamini', 'https://livedot.me/coach-sipho-dlamini', 'https://ridestrong.biotree.bio/']); // Book / contact: their own link, else their page
+    assert.deepEqual(s.coaches[1].specialties, ['road', 'mtb', 'racing']); assert.deepEqual(s.coaches[0].format, ['one-to-one', 'group', 'online']);
+    assert.match(t, /Coaches road, MTB, racing · 1-on-1, online\./); assert.match(t, /Qualifications, as they state them: Cycling coach, Level 2\./); assert.match(t, /Next group session: /); assert.match(t, /Book \/ contact: https:\/\/ridestrong\.biotree\.bio\/ Their page: https:\/\/livedot\.me\/ride-strong/);
+    assert.ok(!/verified|certified/i.test(t + JSON.stringify(v)), 'never a verified or certified badge');
+    assert.deepEqual([v.kind, v.list, v.items[1].button.label, v.items[1].button.url, v.items[1].page.label, v.items[1].page.url], ['list', 'coaches', 'Book / contact', 'https://ridestrong.biotree.bio/', 'See their page', 'https://livedot.me/ride-strong']);
+    assert.equal(v.add.label, 'Are you a coach? Get listed free');
+    r = await call('find_coaches', { place: 'Sandton', specialty: 'marathon' }); assert.deepEqual(r.structuredContent.coaches.map((c) => [c.name, c.app]), [['Coach Lerato Running', 'runfast']]);
+    assert.equal(r.structuredContent.app, 'runfast'); assert.match(r.content[0].text, /runfast\.tech\/app\/\?ref=mcp#\/signup/); // the running account line
+    r = await call('find_coaches', { place: 'Fourways', beginners: true }); assert.deepEqual(r.structuredContent.coaches.map((c) => c.name), ['Coach Sipho Dlamini', 'Coach Lerato Running']);
+    r = await call('find_coaches', { place: 'Fourways', format: 'group', sport: 'running' }); assert.match(r.content[0].text, /^Running training groups near Fourways/);
+    const tool = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'find_coaches');
+    assert.match(tool.description, /^Find cycling and running coaches and training groups near a place, e\.g\. personal cycling trainer in Johannesburg/); assert.equal(tool.annotations.readOnlyHint, true);
+    assert.deepEqual(tool.inputSchema.properties.format.enum, ['one-to-one', 'group', 'online']); assert.ok(tool._meta['openai/outputTemplate']);
+  });
+  await test('find_coaches gets the coach questions (PM acceptance, 18 Oct: ChatGPT had answered "Coaches near Fourways" with find_clubs): the words, and the three prompts', async () => {
+    const tools = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools, by = Object.fromEntries(tools.map((t) => [t.name, t]));
+    for (const w of ['coach', 'trainer', 'coaching', 'training group']) assert.ok(by.find_coaches.description.toLowerCase().includes(w), 'find_coaches names ' + w);
+    assert.match(by.find_clubs.description, /For coaches or personal trainers, use find_coaches\./);
+    const i = (await post({ jsonrpc: '2.0', id: ++n, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } })).body.result.instructions;
+    assert.match(i, /for a coach, trainer, coaching or training group, find_coaches, never find_clubs/);
+    // "Coaches near Fourways", "personal cycling trainer in Joburg", "running coach near Sandton": coaches, never a club in their place
+    for (const [args, first] of [[{ place: 'Fourways' }, 'Coach Sipho Dlamini'], [{ place: 'Johannesburg', sport: 'cycling', format: 'one-to-one' }, 'Coach Sipho Dlamini'], [{ place: 'Sandton', sport: 'running' }, 'Coach Lerato Running']]) {
+      const r = await call('find_coaches', args), S = r.structuredContent;
+      assert.equal(S.view, 'coaches', JSON.stringify(args)); assert.equal(S.coaches[0].name, first); assert.ok(!('clubs' in S));
+      assert.ok(!/Fourways Wheelers|Fourways Striders|Jozi Trail|RunFast Demo Club/.test(r.content[0].text), 'a club in place of a coach');
+    }
+    const z = await call('find_coaches', { place: 'Durban North', sport: 'running' }); assert.equal(z.structuredContent.coaches[0].name, 'Coach Nadia Pillay'); // RunFast's demo coach
+  });
+  await test('find_coaches: none near: "Are you a coach? Get listed free", and a miss', async () => {
+    let r = await call('find_coaches', { place: 'Cape Town', sport: 'running' }); assert.equal(r.structuredContent.view, 'none');
+    assert.match(r.content[0].text, /Are you a coach\? Get listed free: running https:\/\/runfast\.tech\/app\/\?ref=livedot-mcp#\/clubs\/add\?for=coach\n/);
+    r = await call('find_coaches', { place: 'Cape Town' }); assert.match(r.content[0].text, /Are you a coach\? Get listed free: cycling https:\/\/windline\.tech\/pages\/\?for=coach&from=livedot-mcp#apply · running /);
+    assert.match(r._meta['livedot/view'].message, /Are you a coach\? Get listed free/);
+    assert.equal(missOf('find_coaches', { place: 'Cape Town' }, { structured: r.structuredContent }, [{ app: 'windline', status: 200 }]).outcome, 'none');
+  });
   await test('find_events: "cycle tours around Johannesburg": the tour, its organiser, I\'m in', async () => {
     const r = await call('find_events', { place: 'Johannesburg', sport: 'tours' }), s = r.structuredContent;
     assert.equal(s.view, 'events'); assert.deepEqual(s.events.map((e) => e.name), ['Cradle 3-Day']); assert.equal(s.events[0].club, 'Jozi Tours'); assert.equal(s.events[0].join, 'https://windline.tech/o/jozi-tours#join');
@@ -267,7 +305,7 @@ try {
   });
   await test('sign-in: write tools need an account; read tools and plan_route don’t', async () => {
     const t = (await post({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).body.result.tools;
-    assert.equal(t.length, 19); const by = Object.fromEntries(t.map((x) => [x.name, x]));
+    assert.equal(t.length, 20); const by = Object.fromEntries(t.map((x) => [x.name, x]));
     ['find_person', 'where_is', 'plan_route'].forEach((n) => assert.equal(by[n].securitySchemes[0].type, 'noauth'));
     assert.deepEqual(by.create_event.securitySchemes, [{ type: 'oauth2', scopes: ['events.write'] }]); assert.equal(by.publish_event.annotations.destructiveHint, true); assert.equal(by.list_my_events.annotations.readOnlyHint, true);
     assert.match(by.publish_event.description, /ALWAYS ask the user to confirm/);
@@ -615,7 +653,7 @@ try {
   await test('server instructions: short and functional (a shared GPX → plan_route with gpx_file; a person → find_person, then where_is; cards not restated), no steering; plan_route leads with a shared GPX and keeps openai/fileParams', async () => {
     const i = (await post({ jsonrpc: '2.0', id: ++n, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } })).body.result.instructions;
     assert.match(i, /^livedot: live race tracking and route weather for runners and cyclists/); assert.match(i, /GPX file, a route link or a route's points[^.]*call plan_route \(pass an attached file as gpx_file;/); assert.match(i, /Never treat a file name as an event name\./);
-    assert.match(i, /call find_person, then where_is/); for (const t of ['event_status', 'club_in_race', 'event_weather', 'fly_route', 'find_clubs', 'find_events']) assert.ok(i.includes(t), t); assert.match(i, /don't restate the whole card/);
+    assert.match(i, /call find_person, then where_is/); for (const t of ['event_status', 'club_in_race', 'event_weather', 'fly_route', 'find_clubs', 'find_events', 'find_coaches']) assert.ok(i.includes(t), t); assert.match(i, /don't restate the whole card/);
     assert.ok(!/prefer|instead of|rather than (chatgpt|claude|web)|better than/i.test(i), 'no steering'); assert.ok(i.length < 1200, 'short: ' + i.length);
     assert.equal(serverCard().instructions, i);
     const pr = (await post({ jsonrpc: '2.0', id: ++n, method: 'tools/list' })).body.result.tools.find((x) => x.name === 'plan_route');

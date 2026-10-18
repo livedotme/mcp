@@ -20,6 +20,7 @@ const TOOLS = [
   ['tour_route', 'A Windline cycling tour, day by day, with the weather, a flyover of any day, and a GPX link for each day when the organiser shares route files.'],
   ['tour_notes', 'Beta: a tour organiser’s own notes for riders (what to pack, meeting points), quoted in their words.'],
   ['find_clubs', 'Running and cycling clubs near a place, nearest first: their weekly sessions, Beginners welcome, Open to anyone, pace groups, the next session with its weather, the club’s own links, and Join to the club’s page.'],
+  ['find_coaches', 'Cycling and running coaches and training groups near a place: what they coach, 1-on-1, small group or online, the next group session with its weather, Book / contact and their page.'],
   ['find_events', 'Rides, runs, races and tours near a place and when, soonest first, with the weather (the forecast inside 10 days, typical beyond) and I’m in to the event’s page.'],
   ['plan_route', 'The weather along your own route (a GPX file or a Ride with GPS link) at the time you’ll ride or run it.'],
   ['create_event', 'Organisers, signed in with Windline or RunFast: a draft event from your GPX files. Also list_my_events, update_event, add_tour_notes, publish_event (only when you confirm) and post_club_ride.'],

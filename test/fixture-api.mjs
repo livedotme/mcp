@@ -178,6 +178,39 @@ function near(app, what, q, now) {
         club: { id: 'club:fourways-striders', name: 'Fourways Striders', url: 'https://runfast.tech/c/fourways-striders' }, sessions: [], beginnersWelcome: true, paceGroups: '5:30–7:00 /km', start: day(2, 6), km: 0.1 },
     ],
   };
+  // find_coaches (coaches directive, 18 Oct): coaches and training groups, a club page with coach: true (GET /api/coaches/near).
+  // the apps' demo coaches (coach-line's Coach Sipho Dlamini on Windline, Coach Nadia Pillay on RunFast, in Durban North) and two
+  // made-up coaches; never a real person.
+  const weekly = (dow, h, mi) => { for (let n = 1; n <= 7; n++) { const t = new Date(now + n * 864e5); if (new Date(t.getTime() + 2 * 36e5).getUTCDay() === dow) { t.setUTCHours(h - 2, mi, 0, 0); return t.toISOString(); } } return null; }; // the next such weekday, Johannesburg time
+  const COACHES = {
+    windline: [
+      { id: 'club:coach-sipho-dlamini', app: 'windline', name: 'Coach Sipho Dlamini', url: 'https://livedot.me/coach-sipho-dlamini#cycling', join: null, photo: null, kind: 'club', coach: true,
+        area: area('Fourways', -26.017, 28.009), sports: ['road', 'gravel'], sessions: [{ day: 'wed', time: '17:30', place: 'Fourways Mall', sport: 'road' }, { day: 'sat', time: '06:00', place: 'Fourways Mall', sport: 'road' }], sessionsLine: 'Wed 17:30 from Fourways Mall · Sat 06:00 from Fourways Mall',
+        beginnersWelcome: true, paceGroups: '25 and 30 km/h groups', whoFor: 'Road and gravel riders, new or racing (demo coach)', next: { start: weekly(3, 17, 30), place: 'Fourways Mall', kind: 'session' }, km: 0.7, openToAll: true, areaSource: 'set', links: null,
+        specialties: ['road', 'gravel', 'beginners', 'racing'], format: ['one-to-one', 'group', 'online'], qualifications: 'Demo profile: no real qualification' },
+      { id: 'club:ride-strong', app: 'windline', name: 'Ride Strong Coaching', url: 'https://livedot.me/ride-strong#cycling', join: 'https://livedot.me/ride-strong#join-cycling', photo: 'https://windline.tech/img/rs.png', kind: 'club', coach: true,
+        area: area('Bryanston', -26.06, 28.02), sports: ['road', 'mtb'], sessions: [{ day: 'tue', time: '05:30', place: 'Bryanston Country Club', sport: 'road' }], sessionsLine: 'Tue 05:30 from Bryanston Country Club',
+        beginnersWelcome: false, paceGroups: null, whoFor: 'Racers building to a goal event', next: { start: weekly(2, 5, 30), place: 'Bryanston Country Club', kind: 'session' }, km: 5.6, openToAll: false, areaSource: 'set',
+        links: { url: 'https://ridestrong.biotree.bio/', biotree: true }, specialties: ['road', 'mtb', 'racing'], format: ['one-to-one', 'online'], qualifications: 'Cycling coach, Level 2' },
+    ],
+    runfast: [
+      { id: 'club:coach-nadia-pillay', app: 'runfast', name: 'Coach Nadia Pillay', url: 'https://livedot.me/coach-nadia-pillay#running', join: null, photo: null, kind: 'club', coach: true,
+        area: area('Durban North', -29.791, 31.037), sports: ['road-run'], sessions: [{ day: 'tue', time: '05:30', place: 'Durban beachfront', sport: 'road-run' }, { day: 'sat', time: '05:30', place: 'Durban beachfront', sport: 'road-run' }], sessionsLine: 'Tue 05:30 from Durban beachfront · Sat 05:30 from Durban beachfront',
+        beginnersWelcome: true, paceGroups: '5:30–7:00 /km', whoFor: 'Comrades and marathon runners, first-timers too (demo coach)', next: { start: weekly(2, 5, 30), place: 'Durban beachfront', kind: 'session' }, km: 0, openToAll: true, areaSource: 'set', links: null,
+        specialties: ['marathon', 'ultra', 'beginners'], format: ['one-to-one', 'group', 'online'], qualifications: 'Demo profile: no real qualification', at: [-29.791, 31.037] },
+      { id: 'club:run-lerato', app: 'runfast', name: 'Coach Lerato Running', url: 'https://livedot.me/run-lerato#running', join: 'https://livedot.me/run-lerato#join-running', photo: 'https://runfast.tech/img/rl.png', kind: 'club', coach: true,
+        area: area('Sandton', -26.107, 28.056), sports: ['road-run'], sessions: [{ day: 'thu', time: '18:00', place: 'Sandton City', sport: null }], sessionsLine: 'Thu 18:00 from Sandton City',
+        beginnersWelcome: true, paceGroups: '5:30–7:30 /km', whoFor: 'First marathons and comebacks', next: { start: weekly(4, 18, 0), place: 'Sandton City', kind: 'session' }, km: 11.2, openToAll: true, areaSource: 'set',
+        links: { url: 'https://coachlerato.example/book', biotree: false }, specialties: ['marathon', 'beginners'], format: ['group', 'online'], qualifications: null },
+    ],
+  };
+  if (what === 'coaches') {
+    let cl = COACHES[app].filter((x) => (x.at ? Math.hypot((lat - x.at[0]) * 111, (lon - x.at[1]) * 100) : d + x.km) <= km).map(({ at, ...x }) => (at ? { ...x, km: Math.round(Math.hypot((lat - at[0]) * 111, (lon - at[1]) * 100) * 10) / 10 } : x)); // a coach elsewhere (at): their own distance
+    if (q.beginners === 'true') cl = cl.filter((x) => x.beginnersWelcome);
+    if (q.specialty) cl = cl.filter((x) => x.specialties.includes(q.specialty));
+    if (q.format) cl = cl.filter((x) => x.format.includes(q.format));
+    return [200, { v: 1, app, query: { lat, lon, km, beginners: q.beginners === 'true', specialty: q.specialty || null, format: q.format || null }, count: cl.length, results: cl }];
+  }
   let list = (what === 'clubs' ? CLUBS : EVENTS)[app].filter((x) => d + x.km <= km);
   if (q.sport) list = list.filter((x) => x.sports.includes(q.sport) || (!x.sports.length));
   if (what === 'clubs' && q.beginners === 'true') list = list.filter((x) => x.beginnersWelcome);
@@ -194,7 +227,7 @@ const CLUBS = {
 };
 function route(app, p, q, now) {
   let m;
-  if ((m = p.match(/^\/(clubs|events)\/near$/))) return near(app, m[1], q, now);
+  if ((m = p.match(/^\/(clubs|events|coaches)\/near$/))) return near(app, m[1], q, now);
   if ((m = p.match(/^\/live\/club\/([a-z0-9-]+)$/))) { const c = CLUBS[app][m[1]]; if (!c) return [404, { error: 'There’s no club at this address.' }];
     const L = c.members().map((x) => (app === 'windline' ? rider(x, now) : runner(x, now))).sort((a, b) => b.km - a.km); return [200, { now, ...(app === 'windline' ? { club: { slug: m[1], name: c.name } } : {}), [app === 'windline' ? 'riders' : 'runners']: L }]; }
   if (p === '/profile' && (q.q || q.slug)) { // clubs (the apps' page search: every word the start of a word in the name)
