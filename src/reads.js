@@ -52,6 +52,9 @@ export function reads(env = {}, trace = null) {
     find: (app, q) => api(app, '/live/find?q=' + e(q)),
     /** A club's live map (the club page's Happening now, as anyone sees it: Findable members only): { now, club?, riders | runners: [Live] }. */
     club: (app, slug) => (slug === 'demo' ? demo : api)(app, '/live/club/' + e(slug)),
+    /** A coach's athletes live now (Windline and RunFast GET /api/live/coach/<slug>, as anyone sees them: Findable, public races only):
+     *  without race, { coach, races: [{ id, name, count }] } (and the athletes when it's one race); with race, { coach, race, riders | runners }. */
+    coach: (app, slug, race) => api(app, '/live/coach/' + e(slug) + (race ? '?race=' + e(race) : '')),
     /** The apps' name search on their own servers, for the demo (whether config/demo.listed is on: the demo people are listed). */
     demoFind: (app, q) => demo(app, '/live/find?q=' + e(q)),
     /** Published public Windline tours by the words of their name and of who puts them on (GET /api/event/find): { tours: [{ slug, name, by, url }] }. */

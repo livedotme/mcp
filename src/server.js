@@ -83,7 +83,7 @@ export const TOOLS = [
       + 'For "How\'s the Comrades going?" or "Who\'s leading the Coast Classic?". If several races match it lists them: ask the user which one. Try "Comrades demo" or "Coast Classic demo" to see it work any time.',
     inputSchema: {
       type: 'object',
-      properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, club: { type: 'string', description: 'A club or team, if the user asked about one in this race (as club_in_race).' }, units: UNITS },
+      properties: { event: { type: 'string', description: 'The race\'s name, e.g. "Comrades", "Coast Classic demo".' }, club: { type: 'string', description: 'A club or team, if the user asked about one in this race (as club_in_race).' }, coach: { type: 'string', description: 'A coach, if the user asked about their athletes in this race (as club_in_race).' }, units: UNITS },
       required: ['event'],
       additionalProperties: false,
     },
@@ -95,15 +95,16 @@ export const TOOLS = [
     title: 'How a club is doing in a race',
     description: 'How a club or team is doing in a live race: "How is the UCT team doing in the Comrades?", "How are Coast Riders doing in the Coast Classic?". '
       + 'Finds the club by its name or its page address (windline.tech/c/<club>, runfast.tech/c/<club>) and shows its people on the club\'s live map in that race: each one\'s km, time against their goal or finish time, and a map with just the club\'s dots. Tapping a person opens their live card. '
-      + 'Only what the club\'s public live map shows: members who chose to be findable, never a private run, never a position near the start or finish. If several clubs match it lists them: ask which one. Try "the demo club in the Comrades" or "Coast Riders in the Coast Classic" any time.',
+      + 'Only what the club\'s public live map shows: members who chose to be findable, never a private run, never a position near the start or finish. If several clubs match it lists them: ask which one. Try "the demo club in the Comrades" or "Coast Riders in the Coast Classic" any time. '
+      + 'A coach\'s athletes the same way: pass coach ("How are Coach Nadia\'s runners doing in the Comrades?"); several coaches, or no race named and theirs live in several, show a picker.',
     inputSchema: {
       type: 'object',
       properties: {
         club: { type: 'string', description: 'The club or team as the user said it ("UCT", "the UCT team", "Coast Riders"), or its page address (runfast.tech/c/uct).' },
+        coach: { type: 'string', description: 'Instead of club: a coach as the user said it ("Coach Nadia", "Nadia Pillay"), or the coach id a picker gave ("runfast:coach-nadia-pillay").' },
         event: { type: 'string', description: 'The race, if named: "Comrades", "Coast Classic".' },
         units: UNITS,
       },
-      required: ['club'],
       additionalProperties: false,
     },
     annotations: { title: 'How a club is doing in a race', ...READ_ONLY },
@@ -174,7 +175,8 @@ export const TOOLS = [
         code: { type: 'string', description: 'A follow link or its code (windline.tech/f/<code>, runfast.tech/f/<code>).' },
         tour: { type: 'string', description: 'A Windline tour, by its name, address or organiser ("Alistair\'s Durban tour"): the tap goes to the tour\'s organiser, who reads them out at night.' },
         club: { type: 'string', description: 'A club or team, by its name or page address, or the club id a club card gave ("runfast:demo"): one tap to each of its members on the map.' },
-        event: { type: 'string', description: 'With club: the race they are in, if named.' },
+        coach: { type: 'string', description: 'A coach, or the coach id a team card gave ("runfast:coach-nadia-pillay"): one tap to each of their athletes on the map.' },
+        event: { type: 'string', description: 'With club or coach: the race they are in, if named.' },
         name: { type: 'string', description: 'The first name the user wants on the tap ("Sam"), if they gave one. A signed-in user\'s tap shows their own public name instead.' },
         units: UNITS,
       },
@@ -226,6 +228,7 @@ const RESOURCE_META = {
 const INSTRUCTIONS = 'livedot: live race tracking and route weather for runners and cyclists (Windline for cycling, RunFast for running). '
   + 'When the user shares a GPX file, a route link or a route\'s points and asks about the weather, wind, heat, a flyover or a video, call plan_route (pass an attached file as gpx_file; if you can read the file yourself, you may pass its text as gpx or its points as points). Never treat a file name as an event name. '
   + 'When they ask where someone is in a race, call find_person, then where_is with the person id; if several people match, ask one short question and never guess. '
+  + 'For a coach\'s athletes in a race ("Coach Nadia\'s runners in the Comrades"), call club_in_race with coach. '
   + 'For how a race or a club is doing, use event_status or club_in_race; for a race\'s weather, event_weather; to fly a course, fly_route; for a cycling tour, tour_route (tour_notes for the organiser\'s notes); for clubs or events near a place, find_clubs or find_events. '
   + 'Each answer has a card; don\'t restate the whole card. Only public data: findable people on public races. Organisers can sign in (OAuth) to make drafts of their own events; nothing is published without the user\'s yes.';
 

@@ -32,6 +32,7 @@ const PERSON = {
   sport: S('cycling or running.'),
   status: S('live, delayed, nosignal, paused, waiting, finished or stopped.'),
   race: SN('The race they are in, or null for a ride of their own.'),
+  team: X('Their club and coach, as they chose to show them: { club: { slug, name, logo, url } | null, coach: { slug, name, url, demo? } | null }, or null (none set, or a private race).'),
   photo: SN('Their profile picture (from windline.tech or runfast.tech), only for someone shown by their full name (Findable).'),
   can_tap: B('A tap on the back would reach them now (taps on; live or in the day after the finish; this asker may tap).'),
   follow_url: S('The public Follow live link.'),
@@ -69,11 +70,11 @@ const CLUB = {
   clubs: A('Several clubs matched: name, app, people. Ask which one.'),
 };
 export const OUTPUT_SCHEMAS = {
-  club_in_race: out(['club'], CLUB, 'A club or team in a race: its people on the club\'s live map, with their km and goal deltas.'),
-  tap_on_the_back: out(['tap'], { ...PERSON, sent: B('The tap went through.'), finished: B('They\'d finished: it landed as a congratulation.'), named: B('The tap carried a name.'), taps: X('Their taps so far, with this one.'), tour: X('A tour\'s tap: the tour (the tap went to its organiser).'), ...CLUB, taps_sent: N('A team tap: how many members got one.'), team: SN('A team tap: the club.') }, 'The tap, and their live answer (or, for a tour, who reads it out).'),
+  club_in_race: out(['club', 'picker'], { ...CLUB, coach: X('A coach\'s athletes (instead of club): name, app, slug, url, demo.'), pick: X('A picker: club, coach or race.'), options: X('A picker: each club, coach or race to choose from (id to pass back, name, app, sport, area, live_count).') }, 'A club or team in a race: its people on the club\'s live map, with their km and goal deltas.'),
+  tap_on_the_back: out(['tap'], { ...PERSON, sent: B('The tap went through.'), finished: B('They\'d finished: it landed as a congratulation.'), named: B('The tap carried a name.'), taps: X('Their taps so far, with this one.'), tour: X('A tour\'s tap: the tour (the tap went to its organiser).'), ...CLUB, taps_sent: N('A team tap: how many members got one.'), team: X('A team tap: the club\'s name. A person\'s tap: their club and coach, as where_is.') }, 'The tap, and their live answer (or, for a tour, who reads it out).'),
   find_person: out(['person', 'picker', 'club'], { ...PERSON, ...CLUB }, 'One match: the person\'s live answer (view "person"). Several: the 5 most likely (view "picker").'),
   where_is: out(['person'], PERSON, 'The person\'s live answer: where they are, time against their goal, the finish it points to and the weather there.'),
-  event_status: out(['event', 'club'], { ...CLUB,
+  event_status: out(['event', 'club', 'picker'], { ...CLUB,
     name: SN('The race\'s name.'), app: { type: 'string', enum: ['windline', 'runfast'] }, sport: S('cycling or running.'),
     started: SN('When it got under way (ISO).'), on_map: X('How many people are on livedot\'s map.'), finished: N('How many have finished.'),
     leaders: A('The leaders the public race map shows: name, and finished (time) or km and where (null km near the start or finish).'),

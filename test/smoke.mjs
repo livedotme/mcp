@@ -88,7 +88,70 @@ try {
   });
   await test('a rider by handle, imperial by the tool\'s units', async () => {
     const r = await call('where_is', { handle: 'livedot.me/thandi', units: 'imperial' }), t = r.content[0].text;
-    assert.match(t, /Thandi Mokoena is at mile \d+ of \d+ mi/); assert.match(t, /mph/); assert.ok(!/km\/h/.test(t)); assert.match(t, SPONSOR);
+    assert.match(t, /Thandi Mokoena \(Coast Riders, coached by Coach Sipho Dlamini\) is at mile \d+ of \d+ mi/); assert.match(t, /mph/); assert.ok(!/km\/h/.test(t)); assert.match(t, SPONSOR);
+  });
+  await test('the club and coach line (18 Oct): one clause after the name, the structured team, the card\'s team; never "(demo)"', async () => {
+    const r = await call('where_is', { handle: 'megan' }), s = r.structuredContent, t = r.content[0].text, v = r._meta['livedot/view'];
+    assert.match(t, /^Megan N\. \(ProLend Cycling Club, coached by Coach Nadia Pillay\) is at km \d+/); assert.equal((t.match(/coached by/g) || []).length, 1, 'once');
+    assert.ok(!/\(demo\)|demo\)/.test(t), 'never "(demo)" in the words');
+    assert.deepEqual(s.team, { club: { slug: 'prolend-cycling-club', name: 'ProLend Cycling Club', logo: 'https://windline.tech/img/sponsors/prolend.png', url: 'https://livedot.me/prolend-cycling-club#cycling' },
+      coach: { slug: 'coach-nadia-pillay', name: 'Coach Nadia Pillay', url: 'https://livedot.me/coach-nadia-pillay', demo: true } });
+    assert.deepEqual(v.team, s.team); assert.ok(!/Naidoo/.test(JSON.stringify(r)), 'only the pages\' names: no surname rides along');
+    const c = await call('club_in_race', { club: 'Durban Striders', event: 'Comrades' }), ms = c.structuredContent.members;
+    assert.ok(ms.length >= 6 && ms.every((m) => m.team && m.team.club && !m.team.coach)); assert.ok(ms.some((m) => m.team.club.slug === 'fourways-striders'));
+    const one = await call('where_is', { person: ms.find((m) => m.team.club.slug === 'durban-striders').id }), ot = one.content[0].text;
+    assert.match(ot, /^[A-Z][a-z]+ [^(]+ \(Durban Striders\) (is|has|hasn't|stopped)/); assert.ok(!/coached by/.test(ot), 'a club only: no coach words');
+    const none = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades', surname: 'van' });
+    assert.equal(none.structuredContent.name, 'Megan van Wyk'); assert.equal(none.structuredContent.team, null); assert.match(none.content[0].text, /^Megan van Wyk is /);
+    const p = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades' }), rows = p._meta['livedot/view'].rows;
+    assert.equal(rows.find((x) => x.name === 'Megan Botha').team.club.name, 'Fourways Striders'); assert.equal(rows.find((x) => x.name === 'Megan van Wyk').team, null);
+    assert.ok(p.structuredContent.people.every((x) => 'team' in x));
+  });
+  await test('a coach\'s athletes in a race (18 Oct): “How are Coach Nadia\'s runners doing in the Comrades?” → the team card, from find_person, event_status and club_in_race', async () => {
+    const r = await call('find_person', { name_or_handle: 'Coach Nadia Pillay\'s runners', event: 'Comrades' }), S = r.structuredContent, v = r._meta['livedot/view'], t = r.content[0].text;
+    assert.equal(S.view, 'club', t); assert.equal(S.coach.name, 'Coach Nadia Pillay'); assert.equal(S.coach.slug, 'coach-nadia-pillay'); assert.ok(!('club' in S));
+    assert.equal(S.members.length, 8); assert.equal(v.members.length, 8); assert.match(v.subtitle, /^8 runners in the Comrades Marathon \(demo\)$/); assert.match(t, /^Coach Nadia Pillay: 8 runners in the Comrades Marathon \(demo\)/); assert.ok(!/\bher\b/.test(t), 'never a guessed "her"');
+    assert.equal(v.teamTitle, 'Their runners'); assert.deepEqual(v.refresh, { tool: 'club_in_race', args: { coach: 'runfast:coach-nadia-pillay', event: 'comrades-demo', units: 'metric' } });
+    assert.equal(v.follow.url, 'https://runfast.tech/live/race/comrades-demo'); assert.equal(v.tap && v.tap.coach, 'runfast:coach-nadia-pillay');
+    const meg = S.members.find((m) => m.name === 'Megan Naidoo'); assert.ok(meg); assert.equal(meg.team.club.name, 'ProLend Cycling Club'); assert.equal(meg.team.coach.name, 'Coach Nadia Pillay');
+    assert.equal(S.members.filter((m) => m.team && !m.team.club).length, 2, 'two with no club'); assert.ok(S.members.some((m) => m.km === null && m.status === 'live'), 'one at the start: no km');
+    assert.ok(S.members.some((m) => m.status === 'finished')); assert.ok(S.members.some((m) => /^\+/.test(m.goal_delta || '')) && S.members.some((m) => /^−/.test(m.goal_delta || '')), 'ahead and behind');
+    const e = await call('event_status', { event: 'Comrades', coach: 'Coach Nadia Pillay' }); assert.equal(e.structuredContent.view, 'club'); assert.equal(e.structuredContent.count, 8);
+    const w = await call('club_in_race', { coach: 'Coach Sipho Dlamini', event: 'Coast Classic' }), ws = w.structuredContent;
+    assert.equal(ws.view, 'club'); assert.equal(ws.members.length, 6); assert.match(w._meta['livedot/view'].subtitle, /^6 riders in the Coast Classic \(demo\)$/);
+    assert.equal(ws.members.find((m) => /^Thandi Mokoena/.test(m.name)).team.club.name, 'Coast Riders'); assert.equal(ws.members.filter((m) => m.team && m.team.club).length, 4);
+    const tp = await call('tap_on_the_back', { coach: 'runfast:coach-nadia-botha', event: 'run-harbour-half' }); assert.equal(tp.structuredContent.sent, true); assert.equal(tp.structuredContent.taps_sent, 2);
+    const one = await call('where_is', { person: (await call('club_in_race', { coach: 'runfast:coach-nadia-botha', event: 'run-harbour-half' })).structuredContent.members[0].id });
+    assert.equal(one.structuredContent.view, 'person'); assert.match(one.content[0].text, /\(coached by Coach Nadia Botha\)/);
+  });
+  await test('ambiguity as the person search: several coaches or clubs → a picker (rows call club_in_race in place); no race: one → the card, several → a race picker, none → said plainly with what\'s next', async () => {
+    const two = await call('club_in_race', { coach: 'Coach Nadia Pillay' }), tv = two._meta['livedot/view'];
+    assert.equal(two.structuredContent.view, 'picker'); assert.equal(tv.kind, 'picker'); assert.equal(tv.pick, 'team'); assert.deepEqual(tv.rows.map((x) => x.app).sort(), ['runfast', 'windline'], 'the same name on both apps');
+    assert.ok(tv.rows.every((x) => x.call && x.call.tool === 'club_in_race' && x.call.args.coach === x.id && /(Running · RunFast|Cycling · Windline)/.test(x.sub)));
+    const nadias = await call('club_in_race', { coach: 'Coach Nadia' }, { 'openai/userLocation': { country: 'ZA', latitude: -26.1, longitude: 28.0 } }), nv = nadias._meta['livedot/view'];
+    assert.equal(nv.rows.length, 3); assert.equal(nv.rows[0].name, 'Coach Nadia Botha', 'nearest to the asker first (Johannesburg)'); assert.match(nadias.content[0].text, /Ask the user which one \(never guess\)/);
+    const dbn = await call('club_in_race', { coach: 'Coach Nadia', event: 'Comrades' }, { 'openai/userLocation': { country: 'ZA', latitude: -29.9, longitude: 31.0 } }), dv = dbn._meta['livedot/view'];
+    assert.equal(dv.rows[0].name, 'Coach Nadia Pillay', 'athletes live in the named race first'); assert.match(dv.rows[0].sub, /8 runners live in Comrades/);
+    const card = await call(dv.rows[0].call.tool, dv.rows[0].call.args); assert.equal(card.structuredContent.view, 'club'); assert.equal(card.structuredContent.count, 8);
+    const one = await call('club_in_race', { coach: 'Coach Nadia Pillay\'s runners' }); assert.equal(one.structuredContent.view, 'club', 'one race: straight to the card');
+    const many = await call('club_in_race', { coach: 'Coach Nadia Botha' }), mv = many._meta['livedot/view'];
+    assert.equal(many.structuredContent.view, 'picker'); assert.equal(many.structuredContent.pick, 'race'); assert.deepEqual(mv.rows.map((x) => x.name).sort(), ['Comrades (preview)', 'Harbour Half']);
+    const half = await call(mv.rows.find((x) => x.name === 'Harbour Half').call.tool, mv.rows.find((x) => x.name === 'Harbour Half').call.args); assert.equal(half.structuredContent.count, 2);
+    const none = await call('club_in_race', { coach: 'Coach Thabo Quiet' }); assert.equal(none.structuredContent.view, 'none'); assert.match(none.content[0].text, /None of Coach Thabo Quiet's runners are racing right now\. Next: Table Mountain Trail, 2026-11-08/);
+    const off = await call('club_in_race', { coach: 'Coach Nadia Pillay\'s runners', event: 'Two Oceans' }); assert.match(off.content[0].text, /aren't live in Two Oceans|are live in Two Oceans/);
+    const clubs = await call('club_in_race', { club: 'Striders' }), cv = clubs._meta['livedot/view']; assert.equal(cv.rows.length, 3); assert.ok(cv.rows.every((x) => x.call.args.club === x.id));
+    const same = await call('club_in_race', { club: 'Durban Striders' }); assert.deepEqual(same._meta['livedot/view'].rows.map((x) => x.app).sort(), ['runfast', 'windline'], 'one name, both apps');
+    const fp = await call('find_person', { name_or_handle: 'Coach Nadia' }); assert.equal(fp.structuredContent.view, 'picker'); assert.equal(fp._meta['livedot/view'].pick, 'team');
+  });
+  await test('the club and coach line is never on a private race, ride or run', async () => {
+    const r = await call('where_is', { code: 'priv01' }), t = r.content[0].text;
+    assert.equal(r.structuredContent.team, null); assert.ok(!/\(.*(Club|Striders|coached)/.test(t.split('\n')[0]), t);
+    const { norm } = (await import('../src/tools.js'))._test, team = { club: { slug: 'prolend-cycling-club', name: 'ProLend Cycling Club', url: 'https://livedot.me/prolend-cycling-club' }, coach: { slug: 'coach-x', name: 'Coach X', url: 'https://livedot.me/coach-x' } };
+    assert.equal(norm('runfast', { pid: 'p1', name: 'A B', race: { id: 'r', name: 'R', private: true }, team }).team, null);
+    assert.equal(norm('windline', { pid: 'p1', name: 'A B', event: { id: 'e', name: 'E', visibility: 'private' }, team }).team, null);
+    assert.equal(norm('windline', { pid: 'p1', name: 'A B', private: true, team }).team, null);
+    const ok = norm('windline', { pid: 'p1', name: 'A B', event: { id: 'e', name: 'E' }, team: { club: { ...team.club, logo: 'https://evil.example/x.png', email: 'x@y.z' }, coach: { slug: 'Bad Slug', name: 'Z' } } }).team;
+    assert.deepEqual(ok, { club: { slug: 'prolend-cycling-club', name: 'ProLend Cycling Club', logo: null, url: 'https://livedot.me/prolend-cycling-club' }, coach: null }, 'only names, slugs, links and an app-hosted logo');
   });
   await test('ChatGPT\'s user location decides the units when none are passed', async () => {
     const r = await call('where_is', { handle: 'thandi' }, { 'openai/userLocation': { country: 'ZA' }, 'openai/locale': 'en-ZA' }); assert.match(r.content[0].text, /km \d+ of/); assert.ok(!/mile/.test(r.content[0].text));

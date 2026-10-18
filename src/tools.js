@@ -7,6 +7,7 @@ import { reads, SITE, SPORT, PERSON, NAME, DEMOS, isDemo, demoListed } from './r
 import { unitsFor, hms, span, ago, clock, shortName, firstName } from './words.js';
 import { findTour } from './eventweather.js';
 import { coursePoints, weatherFor, colourOf, KEY, HARD_WORDS, HEAT_WORDS } from './weather.js';
+import { placeHint } from './discover.js';
 
 const MOVING = ['live', 'delayed', 'nosignal'];
 const HANDLE = /^[a-z][a-z0-9-]{2,29}$/;
@@ -23,17 +24,33 @@ const sponsorLine = (name) => `Live tracking, proudly brought to you free thanks
 
 // ---------------------------------------------------------------- one shape for both apps' Live
 function norm(app, v) {
-  const ev = app === 'windline' ? v.event : v.race;
+  const ev = app === 'windline' ? v.event : v.race, team = teamOf(v, ev);
   return {
     app, pid: v.pid, name: v.name || (app === 'windline' ? 'Rider' : 'Runner'), status: v.status || (v.live ? 'live' : null),
     km: typeof v.km === 'number' ? v.km : null, total: v.total || null, speed: v.speed, pace: v.pace, plan: v.plan || null, goal: v.goal || null,
     ghost: v.ghost || null, finish: v.finish || null, started: v.started || null, last: v.last || null, seen: v.seen || null,
     taps: v.taps && typeof v.taps.count === 'number' ? v.taps.count : 0, free: v.kind === 'free',
     tapsOn: !(v.taps && v.taps.on === false), tapsOpen: !!(v.taps && v.taps.open), findable: !!v.findable, photo: photoOf(app, v.photo),
-    bib: v.bib != null ? String(v.bib) : null, club: v.club ? String(v.club.name || v.club) : null, place: v.place || v.city || v.country || null, wave: v.wave || null, // only when an answer carries them
+    bib: v.bib != null ? String(v.bib) : null, club: v.club ? String(v.club.name || v.club) : team && team.club ? team.club.name : null, place: v.place || v.city || v.country || null, wave: v.wave || null, // only when an answer carries them
     event: ev ? { id: cid(ev.id), name: ev.name, tz: ev.tz || null, dayId: ev.day && ev.day.id, dayLabel: ev.day && ev.day.label } : null,
+    team,
   };
 }
+/** Their club and coach line (Windline/RunFast `team`, coach-line contract 18 Oct): only the pages' public names, slugs, links and the
+ *  club's logo; never on a private race, ride or run (the servers send null there; this holds it too). → { club, coach } or null. */
+const PAGE_URL = /^https:\/\/(livedot\.me|windline\.tech|runfast\.tech)\//;
+function teamOf(v, ev) {
+  const t = v && v.team; if (!t || typeof t !== 'object') return null;
+  if (v.private || (ev && (ev.private || ev.visibility === 'private')) || v.visibility === 'private') return null;
+  const nm = (x) => x.name.replace(/\s*\(demo\)\s*$/i, '').trim().slice(0, 80); // "(demo)" only in an accessibility label, never in the line
+  const part = (x) => (x && typeof x === 'object' && typeof x.name === 'string' && x.name.replace(/\(demo\)/i, '').trim() && /^[a-z0-9][a-z0-9-]{1,47}$/.test(String(x.slug || '')) ? x : null);
+  const c = part(t.club), k = part(t.coach), url = (x) => (typeof x.url === 'string' && PAGE_URL.test(x.url) ? x.url : `${SITE.livedot}/${x.slug}`);
+  const club = c ? { slug: c.slug, name: nm(c), logo: logoOf(c.logo), url: url(c) } : null;
+  const coach = k ? { slug: k.slug, name: nm(k), url: url(k), ...(k.demo === true ? { demo: true } : {}) } : null;
+  return club || coach ? { club, coach } : null;
+}
+/** The clause after their name in the text answer: " (ProLend Cycling Club, coached by Coach Nadia Pillay)"; never "(demo)". */
+const withTeam = (name, t) => { const a = t ? [t.club && t.club.name, t.coach && 'coached by ' + t.coach.name].filter(Boolean).join(', ') : ''; return !a ? name : /\)$/.test(name) ? name.replace(/\)$/, '; ' + a + ')') : `${name} (${a})`; };
 /** A person's photo, only from the apps' own hosts (windline.tech, runfast.tech; a path is on the app's own), else null. */
 function photoOf(app, u) {
   if (!u || typeof u !== 'string') return null;
@@ -109,7 +126,8 @@ async function personAnswer(ctx, p, via, extra = {}) {
   // a tap would go through (the apps' own rule, as their Live says it: taps on, and open while live or in the day after the finish),
   // and this asker may give one: Findable, or holding their link or handle (Wes, 17 Oct: never a button that fails)
   const canTap = !!(p.tapsOn && p.tapsOpen && (named(p) || (via && (via.code || via.handle))));
-  const S = { view: 'person', id: idOf(p, via), name, photo: photoFor(p), app: p.app, sport: SPORT[p.app], status: p.status, race, follow_url: url, can_tap: canTap, units: f.system, sponsor_line: sponsor };
+  const S = { view: 'person', id: idOf(p, via), name, photo: photoFor(p), app: p.app, sport: SPORT[p.app], status: p.status, race, team: p.team || null, follow_url: url, can_tap: canTap, units: f.system, sponsor_line: sponsor };
+  const who = withTeam(name, p.team); // the first sentence names them with their club and coach, once
   const lines = [], stats = [];
   const total = p.total || (course && course.km) || null;
   let w = null;
@@ -117,7 +135,7 @@ async function personAnswer(ctx, p, via, extra = {}) {
   if (shared) {
     const kmNow = p.km, pct = total ? Math.min(1, kmNow / total) : null;
     S.position = { km: +kmNow.toFixed(2), mile: +(kmNow * 0.621371).toFixed(2), of_km: total, percent: pct == null ? null : Math.round(pct * 100), seen: new Date(p.last.t || p.seen || now).toISOString() };
-    let s1 = `${name} is at ${f.at(kmNow)}` + (total ? ` of ${f.dist(total)}` : '') + (race ? ` in the ${race.replace(/^the /i, '')}` : '');
+    let s1 = `${who} is at ${f.at(kmNow)}` + (total ? ` of ${f.dist(total)}` : '') + (race ? ` in the ${race.replace(/^the /i, '')}` : '');
     if (p.goal && p.ghost && typeof p.ghost.diff === 'number') {
       const d = p.ghost.diff; S.goal = { goal: hms(p.goal), behind_s: Math.round(d) };
       s1 += Math.abs(d) < 30 ? `, right on goal pace (${hms(p.goal)})` : `, ${span(d)} ${d > 0 ? 'behind' : 'ahead of'} the goal (${hms(p.goal)})`;
@@ -152,15 +170,15 @@ async function personAnswer(ctx, p, via, extra = {}) {
     }
   } else if (p.status === 'finished') {
     const t = p.finish && p.started ? p.finish - p.started : null;
-    lines.push(`${name} has finished` + (race ? ` the ${race.replace(/^the /i, '')}` : '') + (t ? ` in ${hms(t / 1000)}` : '') + (p.goal && t ? (t / 1000 <= p.goal ? `, inside the ${hms(p.goal)} goal` : `, against a ${hms(p.goal)} goal`) : '') + '.');
+    lines.push(`${who} has finished` + (race ? ` the ${race.replace(/^the /i, '')}` : '') + (t ? ` in ${hms(t / 1000)}` : '') + (p.goal && t ? (t / 1000 <= p.goal ? `, inside the ${hms(p.goal)} goal` : `, against a ${hms(p.goal)} goal`) : '') + '.');
     S.finished = { time: t ? hms(t / 1000) : null, at: p.finish ? new Date(p.finish).toISOString() : null };
   } else if (p.status === 'waiting') {
     const st = p.plan && p.plan.start ? Date.parse(p.plan.start) : cbody && cbody.start ? Date.parse(cbody.start) : null;
-    lines.push(`${name} hasn't started yet` + (race ? ` in the ${race.replace(/^the /i, '')}` : '') + (st && st > now ? `; the start is at ${clock(st, tz, f)} race time` : '') + '.');
+    lines.push(`${who} hasn't started yet` + (race ? ` in the ${race.replace(/^the /i, '')}` : '') + (st && st > now ? `; the start is at ${clock(st, tz, f)} race time` : '') + '.');
   } else if (p.status === 'stopped') {
-    lines.push(`${name} stopped before the finish` + (race ? ` of the ${race.replace(/^the /i, '')}` : '') + ', so I can\'t share where they are.');
+    lines.push(`${who} stopped before the finish` + (race ? ` of the ${race.replace(/^the /i, '')}` : '') + ', so I can\'t share where they are.');
   } else {
-    lines.push(`${name} is ${p.status === 'paused' ? 'paused' : 'out on the course'}` + (race ? ` in the ${race.replace(/^the /i, '')}` : '') + ', but I can\'t share where they are right now' + (p.status === 'paused' ? '' : ' (the live page hides positions near the start and finish)') + '.');
+    lines.push(`${who} is ${p.status === 'paused' ? 'paused' : 'out on the course'}` + (race ? ` in the ${race.replace(/^the /i, '')}` : '') + ', but I can\'t share where they are right now' + (p.status === 'paused' ? '' : ' (the live page hides positions near the start and finish)') + '.');
   }
 
   // the finish: the server's own projection (start + goal + time against it, or the plan's pace), in the race's clock
@@ -183,7 +201,7 @@ async function personAnswer(ctx, p, via, extra = {}) {
     stops: stopsOf(w), key: w ? KEY[sport] : null, keyTitle: sport === 'run' ? 'How hard the weather makes it' : 'The wind on the road',
     headline: shared ? f.atShort(p.km) + (total ? ' of ' + f.num(total) + ' ' + f.label.dist : '') : null,
     stats, ahead: (S.ahead ? w.ahead.slice(0, 4).map((g) => ({ k: f.atShort(g.s.fromKm) + '–' + f.num(g.s.toKm), v: (g.effect === 'head' ? 'Headwind ' + f.speedShort(g.head) : g.effect === 'tail' ? 'Tailwind ' + f.speedShort(-g.head) : g.effect === 'calm' ? 'Calm' : 'Side-on ' + f.speedShort(g.w.speed)), sub: f.degShort(g.w.temp) + (sport === 'run' && g.heat && g.heat !== 'low' ? ' · Heat ' + HEAT_WORDS[g.heat] : ''), c: colourOf(g, sport), at: clock(g.eta.getTime(), tz, f) })) : []),
-    follow: { url, label: via && via.handle ? 'Follow live' : 'Watch live' }, handle: via && via.handle || null, photo: S.photo,
+    follow: { url, label: via && via.handle ? 'Follow live' : 'Watch live' }, handle: via && via.handle || null, photo: S.photo, team: S.team,
     refresh: { tool: 'where_is', args: { person: S.id, units: f.system } }, // the card keeps itself up to date (widget: every 30 s while it's on screen)
     tap: canTap ? { person: S.id, first, finished: p.status === 'finished', label: p.status === 'finished' ? `Congratulate ${first}` : `Give ${first} a tap on the back` } : null,
     updated: [shared ? 'Position ' + ago(p.last.t || p.seen || now, now) : null, w && w.fetched ? 'Forecast ' + ago(w.fetched, now) : null, w ? 'Apple Weather' : null].filter(Boolean).join(' · '),
@@ -264,7 +282,7 @@ export async function tapOnTheBack(ctx, args) {
     const who = o.body.organiser || 'The organiser', line = `Tap sent. ${who} will read it out tonight.` + (o.body.demo ? ' (This is the demo of a tour\'s taps: nothing is kept.)' : '');
     return { text: `${line}${o.body.named ? '' : ' (No name on it: connect your Windline or RunFast account, or tell me your first name, so they know who it was.)'}\n\n${sponsor}`, structured: { view: 'tap', sent: true, finished: false, named: !!o.body.named, demo: !!o.body.demo, tour: ev.name, taps: o.body.count || null, sponsor_line: sponsor }, map: null };
   }
-  if (args.club) return tapTeam(ctx, { club: args.club, event: args.event }, tapAt, sponsor); // the whole team: one tap to each member on the map
+  if (args.club || args.coach) return tapTeam(ctx, { club: args.club, coach: args.coach, event: args.event }, tapAt, sponsor); // the whole team: one tap to each member on the map
   const r = await resolve(ctx, args);
   let p = r.p, via = r.via, out;
   if (p) out = await tapAt(p.app, { pid: p.pid, code: via && via.code ? via.code : undefined, handle: via && via.handle ? via.handle : undefined });
@@ -312,8 +330,10 @@ export async function findPerson(ctx, args) {
   const sponsor = sponsorLine(await sponsorName(R));
   if (!raw) return { text: 'Who are you looking for? A name or a livedot handle.\n\n' + sponsor, structured: { view: 'none' }, map: null };
   const link = parseLink(raw); if (link) return whereIs(ctx, { link: raw, units: args.units });
+  // a coach's people ("Coach Nadia's runners in the Comrades"): their team card, or which coach / which race (coach-line, 18 Oct)
+  if (isCoachAsk(raw)) { const c = await clubInRace(ctx, { coach: raw, event, units: args.units }); if (c.structured && ['club', 'picker'].includes(c.structured.view)) return c; }
   // a club or team ("the UCT team", "Coast Riders", windline.tech/c/…): its people in the race, as club_in_race (Wes, 17 Oct)
-  if (parseClub(raw) || CLUBISH.test(raw) || /\bdemo club\b/i.test(raw)) { const c = await clubInRace(ctx, { club: raw, event, units: args.units }); if (c.structured && c.structured.view === 'club') return c; }
+  if (parseClub(raw) || CLUBISH.test(raw) || /\bdemo club\b/i.test(raw)) { const c = await clubInRace(ctx, { club: raw, event, units: args.units }); if (c.structured && ['club', 'picker'].includes(c.structured.view)) return c; }
   const q = raw.replace(/^@/, ''), qh = q.toLowerCase();
 
   // 1. a livedot handle. Typed as one ("@megan", "livedot.me/megan", "megan-n", or all lower case): an exact hit answers at once.
@@ -389,7 +409,7 @@ export async function findPerson(ctx, args) {
       km_now: sh ? +p.km.toFixed(1) : null, where: sh ? f.atShort(p.km) : p.status === 'finished' ? 'Finished' : p.status === 'waiting' ? 'Not started' : null,
       goal: p.goal && p.ghost && typeof p.ghost.diff === 'number' && sh ? (Math.abs(p.ghost.diff) < 30 ? 'on goal pace' : `${span(p.ghost.diff).replace(/ minutes?$/, ' min')} ${p.ghost.diff > 0 ? 'behind' : 'ahead of'} goal`) : null,
       pace: sh ? (p.app === 'runfast' ? (p.pace > 0 ? f.paceShort(3600 / p.pace) : null) : (p.speed > 0 ? f.speedShort(p.speed) : null)) : null,
-      seen: p.last && p.last.t ? ago(p.last.t, now) : p.seen ? ago(p.seen, now) : null, bib: p.bib, club: p.club };
+      seen: p.last && p.last.t ? ago(p.last.t, now) : p.seen ? ago(p.seen, now) : null, bib: p.bib, club: p.club, team: p.team || null };
   };
   const rows = people.slice(0, 20).map(row), first5 = rows.slice(0, 5);
   // never two rows that look the same: the second line carries what tells them apart (where, pace, the goal; then when last seen)
@@ -407,6 +427,7 @@ export async function findPerson(ctx, args) {
 // ---------------------------------------------------------------- event_status
 export async function eventStatus(ctx, args) {
   const { R, f0, now } = ctx, q = String(args.event || '').trim(), sponsor = sponsorLine(await sponsorName(R));
+  if (args.coach) return clubInRace(ctx, { coach: args.coach, event: q, units: args.units }); // "How are Coach Nadia's runners doing in the Comrades?"
   if (args.club) return clubInRace(ctx, { club: args.club, event: q, units: args.units }); // "How's the UCT team doing in the Comrades?"
   if (!q) return { text: 'Which race?\n\n' + sponsor, structured: { view: 'none' }, map: null };
   let list = [];
@@ -483,7 +504,7 @@ async function clubsFor(R, q, race) {
   if (addr) {
     if (addr.slug === 'demo') return DEMO_CLUBS.filter((d) => d.app === addr.app).map((d) => ({ ...d, demo: true }));
     const r = await R.profile(addr.app, 'slug=' + encodeURIComponent(addr.slug)), p = r.ok && r.body && r.body.profiles && r.body.profiles[0];
-    return p && p.type !== 'organiser' ? [{ app: addr.app, slug: p.slug, name: p.name, logo: logoOf(p.logo), colour: p.colour || null, url: p.url || null }] : [];
+    return p && p.type !== 'organiser' ? [{ app: addr.app, slug: p.slug, name: p.name, logo: logoOf(p.logo), colour: p.colour || null, url: p.url || null, area: p.area || null }] : [];
   }
   const all = words(q), sig = clubWordsOf(q);
   // the demo clubs: "the demo club", "Coast Riders", "RunFast Demo Club"; a race named picks between them
@@ -496,7 +517,7 @@ async function clubsFor(R, q, race) {
   // the apps' page search (their own rule: every word the start of a word in the name), clubs only; then without the generic words
   const look = async (text) => {
     const both = await Promise.all(['windline', 'runfast'].map((a) => R.profile(a, 'q=' + encodeURIComponent(text.slice(0, 60)))));
-    return both.flatMap((r, i) => (r.ok && r.body && Array.isArray(r.body.profiles) ? r.body.profiles.filter((p) => p.type === 'club' && !(p.slug === 'demo')).map((p) => ({ app: p.app || ['windline', 'runfast'][i], slug: p.slug, name: p.name, logo: logoOf(p.logo), colour: p.colour || null, url: p.url || null })) : []));
+    return both.flatMap((r, i) => (r.ok && r.body && Array.isArray(r.body.profiles) ? r.body.profiles.filter((p) => p.type === 'club' && !p.coach && !(p.slug === 'demo')).map((p) => ({ app: p.app || ['windline', 'runfast'][i], slug: p.slug, name: p.name, logo: logoOf(p.logo), colour: p.colour || null, url: p.url || null, area: p.area || null })) : []));
   };
   let found = [];
   if (sig.join('').length >= 2) { found = await look(all.filter((x) => !STOP.has(x)).join(' ')); if (!found.length) found = await look(sig.join(' ')); }
@@ -518,6 +539,7 @@ const KM_SORT = (a, b) => (b.status === 'finished') - (a.status === 'finished') 
 const deltaOf = (p) => (p.goal && p.ghost && typeof p.ghost.diff === 'number' ? (Math.abs(p.ghost.diff) < 30 ? 'On pace' : (p.ghost.diff > 0 ? '+' : '−') + hms(Math.abs(p.ghost.diff))) : null); // always m:ss (h:mm:ss over an hour), as the person card
 
 async function clubCard(ctx, c, people, race, extra = {}) {
+  const coach = c.kind === 'coach'; // a coach's athletes in one race (coach-line, 18 Oct): the same card, the coach in the club's place
   const { R, f0, now } = ctx, app = c.app, sport = app === 'runfast' ? 'run' : 'ride', sponsor = sponsorLine(await sponsorName(R));
   const byEvent = {}; people.forEach((p) => { const k = p.event ? p.event.id : '_'; (byEvent[k] = byEvent[k] || []).push(p); });
   const evIds = Object.keys(byEvent).sort((a, b) => byEvent[b].length - byEvent[a].length), mainId = evIds[0], list = byEvent[mainId].slice().sort(KM_SORT);
@@ -527,39 +549,40 @@ async function clubCard(ctx, c, people, race, extra = {}) {
   const tz = (ev && ev.tz) || (cbody && cbody.tz) || null, f = f0(tz), n = list.length, who = n === 1 ? PERSON[app] : PERSON[app] + 's';
   const on = list.filter((p) => MOVING.includes(p.status) || p.status === 'paused' || p.status === 'waiting'), fin = list.filter((p) => p.status === 'finished');
   const subOf = (p) => (p.status === 'finished' && p.finish && p.started ? 'Finished ' + hms((p.finish - p.started) / 1000) : sharesPosition(p) ? f.atShort(p.km) + (deltaOf(p) ? ' · ' + deltaOf(p) : '') : p.status === 'paused' ? 'Paused' : p.status === 'waiting' ? 'Not started' : 'On the course');
-  const members = list.slice(0, 40).map((p) => ({ id: idOf(p, null), name: nameOf(p).replace(/\s*\(demo\)\s*$/i, ''), photo: photoFor(p), status: p.status, sub: subOf(p), km: sharesPosition(p) ? +p.km.toFixed(1) : null, goal_delta: deltaOf(p), can_tap: !!(p.tapsOn && p.tapsOpen) }));
+  const members = list.slice(0, 40).map((p) => ({ id: idOf(p, null), name: nameOf(p).replace(/\s*\(demo\)\s*$/i, ''), photo: photoFor(p), status: p.status, sub: subOf(p), km: sharesPosition(p) ? +p.km.toFixed(1) : null, goal_delta: deltaOf(p), can_tap: !!(p.tapsOn && p.tapsOpen), team: p.team || null }));
   const tappable = members.filter((m) => m.can_tap).length, lead = list.find(sharesPosition);
   const clubName = c.name.replace(/\s*\(demo\)\s*$/i, ' (demo)'), shown = clubName.replace(/\s*\(demo\)$/i, '') /* "demo" once, in the race's name */, raceShort = raceName.replace(/^the /i, '');
-  const club_url = `${SITE[app]}/live/club/${encodeURIComponent(c.slug)}`;
+  const club_url = coach ? `${SITE[app]}/live/race/${encodeURIComponent(c.raceId)}` : `${SITE[app]}/live/club/${encodeURIComponent(c.slug)}`;
   const lines = [`${/\(demo\)/i.test(raceName) ? shown : clubName}: ${n} ${who} in the ${raceShort}` + (fin.length ? `, ${fin.length} finished` : '') + '.'];
-  if (lead) lines.push(`Out front for the club: ${nameOf(lead)} at ${f.at(lead.km)}${lead.total ? ' of ' + f.dist(lead.total) : ''}.`);
+  if (lead) lines.push(`Out front${coach ? '' : ' for the club'}: ${nameOf(lead)} at ${f.at(lead.km)}${lead.total ? ' of ' + f.dist(lead.total) : ''}.`);
   lines.push(members.slice(0, 12).map((m, i) => `${i + 1}. ${m.name}, ${m.sub} [person: ${m.id}]`).join('\n'));
   if (members.length > 12) lines.push(`…and ${members.length - 12} more on the club's map.`);
   if (others.length) lines.push(`Also on the club's map: ${others.map((o) => `${o.n} in ${o.name}`).join(', ')}.`);
   if (extra.note) lines.push(extra.note);
   lines.push(`Tap a ${PERSON[app]} on the card to see them; or call where_is with their person id.`);
-  lines.push(`Watch the club live: ${club_url}`);
+  lines.push(`Watch the ${coach ? 'race' : 'club'} live: ${club_url}`);
   const text = lines.join('\n') + '\n\n' + sponsor;
-  const S = { view: 'club', club: { name: clubName, app, slug: c.slug, url: c.url || null }, sport: SPORT[app], race: raceName, count: n, finished_count: fin.length, on_course: on.length, members, can_tap_team: tappable > 0, club_url, units: f.system, sponsor_line: sponsor };
-  const ref = c.demo ? `${app}:demo` : `${app}:${c.slug}`;
+  const S = { view: 'club', ...(coach ? { coach: { name: clubName, app, slug: c.slug, url: c.url || null, ...(c.demo ? { demo: true } : {}) } } : { club: { name: clubName, app, slug: c.slug, url: c.url || null } }), sport: SPORT[app], race: raceName, count: n, finished_count: fin.length, on_course: on.length, members, can_tap_team: tappable > 0, club_url, units: f.system, sponsor_line: sponsor };
+  const ref = c.demo && !coach ? `${app}:demo` : `${app}:${c.slug}`, key = coach ? 'coach' : 'club', ev0 = coach ? c.raceId : race || raceName;
   const map = {
     kind: 'club', sport, app, name: /\(demo\)/i.test(raceName) ? shown : clubName, race: raceName, status: 'live', statusWord: 'Live',
-    club: { name: clubName, logo: c.logo || null, colour: c.colour || null, accent: c.accent || null, initials: clubName.replace(/\(.*?\)/g, '').trim().split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).map((w) => w[0]).join('').slice(0, 3).toUpperCase() },
-    subtitle: `${n} of our ${who} in the ${raceShort}`,
+    club: { slug: c.slug, name: clubName, logo: c.logo || null, colour: c.colour || null, accent: c.accent || null, initials: clubName.replace(/\(.*?\)/g, '').trim().split(/\s+/).filter((w) => /^[A-Za-z0-9]/.test(w)).map((w) => w[0]).join('').slice(0, 3).toUpperCase() },
+    subtitle: coach ? `${n} ${who} in the ${raceShort}` : `${n} of our ${who} in the ${raceShort}`, ...(coach ? { teamTitle: sport === 'run' ? 'Their runners' : 'Their riders' } : {}),
     course: course ? thin(course.pts, 600) : [], progress: 0,
     dots: list.filter(sharesPosition).slice(0, 60).map((p, i) => ({ lat: p.last.lat, lon: p.last.lon, lead: i === 0, id: idOf(p, null), label: firstName(p.name) })),
     headline: on.length + ' on the course' + (fin.length ? ' · ' + fin.length + ' finished' : ''),
     members, total: n,
     stats: [{ k: 'On the course', v: String(on.length) }, { k: 'Finished', v: String(fin.length) }].concat(lead ? [{ k: 'Out front', v: f.atShort(lead.km), sub: firstName(lead.name) }] : []), // the count is in the header
-    follow: { url: club_url, label: 'Watch the club live' },
-    refresh: { tool: 'club_in_race', args: { club: ref, event: race || raceName, units: f.system } },
-    tap: tappable ? { club: ref, event: race || raceName, team: true, n: tappable, label: 'Give the team a tap on the back' } : null,
+    follow: { url: club_url, label: coach ? 'Watch the race live' : 'Watch the club live' },
+    refresh: { tool: 'club_in_race', args: { [key]: ref, event: ev0, units: f.system } },
+    tap: tappable ? { [key]: ref, event: ev0, team: true, n: tappable, label: 'Give the team a tap on the back' } : null,
     updated: 'Positions ' + ago(ctx.feedNow || now, now), sponsor, units: f.system,
   };
   return { text, structured: S, map };
 }
 /** clubInRace's search, shared with the team tap: → { c, people } or { text, structured } (why not). */
 async function findClubInRace(ctx, args) {
+  if (args.coach) return findCoachInRace(ctx, args);
   const { R } = ctx, raw = String(args.club || '').trim(), race = String(args.event || '').trim();
   if (!raw) return { text: 'Which club or team? Its name, or its page address (windline.tech/c/…, runfast.tech/c/…).' };
   let clubs;
@@ -575,18 +598,20 @@ async function findClubInRace(ctx, args) {
     const nm = clubs.length === 1 ? clubs[0].name || raw : `${clubs.length} clubs match "${raw}" (${clubs.map((c) => c.name).join('; ')}), and none of them`;
     return { text: clubs.length === 1 ? `No one from ${nm} is on the club's live map${race ? ' in ' + race : ''} right now. Only members who chose to be findable, sharing their position, show there.` : `${nm} has anyone on its live map${race ? ' in ' + race : ''} right now.` };
   }
-  if (live.length > 1) return { text: `${live.length} clubs match "${raw}": ${live.map((x, i) => `${i + 1}. ${x.c.name} (${NAME[x.c.app]}), ${x.people.length} on the club's map`).join('; ')}. Ask the user which one, then call club_in_race with its full name.`, clubs: live.map((x) => ({ name: x.c.name, app: x.c.app, people: x.people.length })) };
+  if (live.length > 1) return { pick: teamPicker(ctx, 'club', raw, race, live.map((x) => ({ c: x.c, n: x.people.length }))) }; // several clubs: which one, as the person search asks (a picker)
   return { c: live[0].c, people: live[0].people, now: live[0].now };
 }
 export async function clubInRace(ctx, args) {
   const sponsor = sponsorLine(await sponsorName(ctx.R)), r = await findClubInRace(ctx, args);
-  if (!r.c) return { text: r.text + '\n\n' + sponsor, structured: { view: 'none', message: r.text, ...(r.clubs ? { clubs: r.clubs } : {}), ...(r.down ? { upstream_error: true } : {}) }, map: null };
+  if (r.pick) return { text: r.pick.text + '\n\n' + sponsor, structured: { ...r.pick.structured, sponsor_line: sponsor }, map: { ...r.pick.map, sponsor } };
+  if (!r.c) return { text: r.text + '\n\n' + sponsor, structured: { view: 'none', message: r.text, ...(r.clubs ? { clubs: r.clubs } : {}), ...(r.upcoming ? { upcoming: r.upcoming } : {}), ...(r.down ? { upstream_error: true } : {}) }, map: null };
   return clubCard({ ...ctx, feedNow: r.now }, r.c, r.people, String(args.event || '').trim());
 }
 /** "Give the team a tap on the back": one tap to each member on the map who takes taps (their own switch, open while they race and
  *  the day after the finish), each through the apps' own tap with its caps (one a minute from you to each of them). */
 async function tapTeam(ctx, args, tapAt, sponsor) {
   const r = await findClubInRace(ctx, args);
+  if (r.pick) return { text: r.pick.text + '\n\n' + sponsor, structured: { view: 'none', message: r.pick.text }, map: null };
   if (!r.c) return { text: r.text + '\n\n' + sponsor, structured: { view: 'none', message: r.text }, map: null };
   const people = r.people.filter((p) => p.tapsOn && p.tapsOpen).slice(0, 40), skipped = r.people.length - people.length;
   if (!people.length) { const t = `No one from ${r.c.name} on the map takes taps on the back just now.`; return { text: `${t}\n\n${sponsor}`, structured: { view: 'none', message: t }, map: null }; }
@@ -602,7 +627,87 @@ async function tapTeam(ctx, args, tapAt, sponsor) {
     structured: { ...card.structured, view: 'tap', sent: true, finished: false, named, taps_sent: sent.length, team: r.c.name }, map: card.map };
 }
 
-export const _test = { norm, parseLink, closeness, hit, cache, parseClub, CLUBISH };
+// ---------------------------------------------------------------- a coach's athletes in a race (coach-line, Wes 18 Oct: "How are Coach
+// Nadia's runners doing in the Comrades?"): the coach's live feed (GET /api/live/coach/<slug>, Findable athletes on public races only),
+// shown as the club's team card. Ambiguity as the person search: several coaches (or clubs) → a picker; no race named → the one race
+// they're live in, a race picker for several, or "none racing right now" with their next public events.
+const GROUP = /\b(runners?|riders?|athletes?|cyclists?|squad|group|training|team|people|crew|guys|lot)\b/gi;
+/** "Coach Nadia's runners", "how are Nadia Pillay's athletes doing" → the name words, and the app the group word points to. */
+export function coachAskOf(q) {
+  const t = String(q || ''), app = /\b(runners?|running)\b/i.test(t) ? 'runfast' : /\b(riders?|cyclists?|cycling)\b/i.test(t) ? 'windline' : null;
+  const name = t.replace(/['’]s?\b/g, ' ').replace(GROUP, ' ').replace(/\b(how|are|is|doing|going|in|at|the|my|our|her|his|their|of)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  return { name, app };
+}
+/** A question about a coach's people ("Coach Nadia", "Nadia's runners"), not a person's name. */
+export const isCoachAsk = (q) => /^\s*coach\b/i.test(String(q || '')) || /['’]s?\s+(runners|riders|athletes|cyclists|squad|training group)\b/i.test(String(q || ''));
+const refOf = (c) => `${c.app}:${c.slug}`;
+/** The coach pages a question means (the apps' page search, coach: true) → [{ kind, app, slug, name, logo, url, area, demo }]. */
+async function coachesFor(R, raw) {
+  const m = String(raw || '').trim().match(/^(windline|runfast):([a-z0-9][a-z0-9-]{1,47})$/);
+  if (m) return [{ kind: 'coach', app: m[1], slug: m[2], name: '', logo: null, url: null, area: null }];
+  const { name, app } = coachAskOf(raw);
+  const look = async (text) => {
+    const both = await Promise.all(['windline', 'runfast'].map((a) => R.profile(a, 'q=' + encodeURIComponent(text.slice(0, 60)))));
+    return both.flatMap((r, i) => (r.ok && r.body && Array.isArray(r.body.profiles) ? r.body.profiles.filter((p) => p.coach === true || p.type === 'coach').map((p) => ({ kind: 'coach', app: p.app || ['windline', 'runfast'][i], slug: p.slug, name: p.name, logo: logoOf(p.logo), url: p.url || null, area: p.area || null, ...(p.demo ? { demo: true } : {}) })) : []));
+  };
+  if (words(name).length === 0) return [];
+  let found = await look(name); if (!found.length && /^coach\s/i.test(name)) found = await look(name.replace(/^coach\s+/i, ''));
+  if (app && found.some((c) => c.app === app)) found = found.filter((c) => c.app === app); // "runners": RunFast's coaches
+  return found.slice(0, 8);
+}
+/** Several clubs or coaches (or a coach's races): a picker card, as "which Megan?". Rank: athletes live in the named race, then the
+ *  nearest to the asker, then the closest name. Each row opens the team card in place (club_in_race through callTool). */
+function teamPicker(ctx, kind, raw, race, list) {
+  const at = placeHint(ctx.meta), km = (c) => (at && at.lat != null && c.area && isFinite(c.area.lat) ? Math.hypot((c.area.lat - at.lat) * 111, (c.area.lon - at.lon) * 111 * Math.cos(at.lat * Math.PI / 180)) : Infinity);
+  const nameHit = (c) => (words(c.name).join(' ') === words(coachAskOf(raw).name).join(' ') ? 2 : hit(c.name, coachAskOf(raw).name) ? 1 : 0);
+  const sorted = list.slice().sort((a, b) => (b.n > 0) - (a.n > 0) || km(a.c) - km(b.c) || nameHit(b.c) - nameHit(a.c) || b.n - a.n || a.c.name.localeCompare(b.c.name));
+  const units = ctx.f0(null).system, who = (c) => PERSON[c.app] + 's', word = kind === 'coach' ? 'coaches' : 'clubs';
+  const rows = sorted.map(({ c, n }) => ({ id: refOf(c), name: c.name.replace(/\s*\(demo\)\s*$/i, ''), photo: c.logo || null, sport: SPORT[c.app], app: c.app, area: c.area ? c.area.name : null, live_count: n,
+    sub: [c.area && c.area.name, SPORT[c.app].replace(/^./, (x) => x.toUpperCase()) + ' · ' + NAME[c.app], n ? `${n} ${n === 1 ? PERSON[c.app] : who(c)} live${race ? ' in ' + race.replace(/^the /i, '') : ''}` : 'None racing now'].filter(Boolean).join(' · '),
+    live: n > 0, call: { tool: 'club_in_race', args: { [kind]: refOf(c), ...(race ? { event: race } : {}), units } } }));
+  const head = `${rows.length} ${word} match "${raw}"${race ? ' (' + race + ')' : ''}:`;
+  const text = `${head}\n${rows.map((r, i) => `${i + 1}. ${r.name} (${r.sport}, ${NAME[r.app]}${r.area ? ', ' + r.area : ''}): ${r.live_count ? r.live_count + ' live' + (race ? ' in ' + race : '') : 'none racing now'} [${kind}: ${r.id}]`).join('\n')}\n\nAsk the user which one (never guess), then call club_in_race with ${kind}: "<id>".`;
+  return { text, structured: { view: 'picker', pick: kind, total: String(rows.length), options: rows.map(({ call, sub, live, ...x }) => x) },
+    map: { kind: 'picker', pick: 'team', title: `${rows.length} ${word} match "${coachAskOf(raw).name || raw}"`, subtitle: race ? 'in the ' + race.replace(/^the /i, '') : 'live on livedot', query: raw, rows, total: String(rows.length), units } };
+}
+/** A coach's races now (no race named, several): a picker of the races, each opening the team card in that race. */
+function racePicker(ctx, c, races) {
+  const units = ctx.f0(null).system, who = PERSON[c.app] + 's';
+  const rows = races.map((r) => ({ id: refOf(c) + '@' + r.id, name: r.name, photo: null, sport: SPORT[c.app], app: c.app, live_count: r.count, sub: `${r.count} of ${c.name.replace(/\s*\(demo\)\s*$/i, '')}'s ${r.count === 1 ? PERSON[c.app] : who} live`, live: true,
+    call: { tool: 'club_in_race', args: { coach: refOf(c), event: r.id, units } } }));
+  const text = `${c.name}'s ${who} are live in ${races.length} races: ${races.map((r, i) => `${i + 1}. ${r.name} (${r.count}) [race: ${r.id}]`).join('; ')}. Ask the user which race, then call club_in_race with coach: "${refOf(c)}" and event: the race id.`;
+  return { text, structured: { view: 'picker', pick: 'race', coach: { name: c.name, app: c.app, slug: c.slug }, total: String(rows.length), options: rows.map(({ call, sub, live, ...x }) => x) },
+    map: { kind: 'picker', pick: 'team', title: `${c.name.replace(/\s*\(demo\)\s*$/i, '')}: ${races.length} races live`, subtitle: 'Which race?', query: '', rows, total: String(rows.length), units } };
+}
+/** clubInRace's search for a coach → { c, people, now } (the team card), { pick } (a picker) or { text } (why not). */
+async function findCoachInRace(ctx, args) {
+  const { R } = ctx, raw = String(args.coach || '').trim(), race = String(args.event || '').trim();
+  if (!raw) return { text: 'Which coach? Their name as it\'s written on their livedot page.' };
+  const cands = await coachesFor(R, raw);
+  if (!cands.length) return { text: `I couldn't find a coach called "${coachAskOf(raw).name || raw}" on Windline or RunFast. Ask the user for the coach's name as it's written on their livedot page.`, miss: true };
+  const feeds = await Promise.all(cands.map((c) => R.coach(c.app, c.slug)));
+  const down = feeds.every((f) => f.status === 0 || f.status >= 500);
+  const all = cands.map((c, i) => { const b = feeds[i].ok ? feeds[i].body || {} : {}; if (b.coach) Object.assign(c, { name: c.name || b.coach.name, url: c.url || b.coach.url || null, ...(b.coach.demo ? { demo: true } : {}) });
+    const races = Array.isArray(b.races) ? b.races.filter((x) => x && x.id) : [], inRace = race ? races.filter((x) => x.id === race || hit(x.name, race)) : races;
+    return { c, races, inRace, n: inRace.reduce((t, x) => t + (+x.count || 0), 0), body: b }; }).filter((x) => x.c.name);
+  if (!all.length) return { text: down ? `livedot couldn't reach Windline or RunFast just now. Try again in a moment.` : `I couldn't find a coach called "${raw}".`, down };
+  const live = all.filter((x) => x.inRace.length);
+  if (live.length > 1 || (!live.length && all.length > 1)) return { pick: teamPicker(ctx, 'coach', raw, race, (live.length ? live : all).map((x) => ({ c: x.c, n: x.n }))) };
+  const x = live[0] || all[0], c = x.c, nm = c.name.replace(/\s*\(demo\)\s*$/i, ''), who = PERSON[c.app] + 's';
+  if (!x.inRace.length) { // none of theirs live (in that race): say so plainly, with where they are live, or their next public events
+    if (race && x.races.length) return { text: `None of ${nm}'s ${who} are live in ${race} right now. Live now: ${x.races.map((r) => `${r.name} (${r.count})`).join(', ')}.` };
+    const p = await R.profile(c.app, 'slug=' + encodeURIComponent(c.slug)), up = ((p.ok && p.body && p.body.profiles && p.body.profiles[0] && p.body.profiles[0].events && p.body.profiles[0].events.upcoming) || []).slice(0, 3);
+    return { text: `None of ${nm}'s ${who} are racing right now.` + (up.length ? ` Next: ${up.map((e) => `${e.name}${e.start || e.date ? ', ' + String(e.start || e.date).slice(0, 10) : ''}`).join('; ')}.` : ''), upcoming: up.map((e) => ({ name: e.name, start: e.start || e.date || null, url: e.url || null })) };
+  }
+  if (x.inRace.length > 1) return { pick: racePicker(ctx, c, x.inRace) };
+  const r0 = x.inRace[0], f = x.body.race && x.body.race.id === r0.id && listOf(x.body).length ? { ok: true, body: x.body } : await R.coach(c.app, c.slug, r0.id);
+  if (!f.ok) return { text: `livedot couldn't reach ${NAME[c.app]} just now, so I can't say how ${nm}'s ${who} are doing. Try again in a moment.`, down: true };
+  const people = listOf(f.body).map((v) => ({ ...norm(c.app, v), found: true })).filter((p) => p.status !== 'stopped');
+  if (!people.length) return { text: `None of ${nm}'s ${who} are on the map in ${r0.name} right now.` };
+  return { c: { ...c, kind: 'coach', raceId: r0.id }, people, now: f.body.now || null };
+}
+
+export const _test = { norm, parseLink, closeness, hit, cache, parseClub, CLUBISH, coachAskOf, isCoachAsk };
 
 // ---------------------------------------------------------------- event_weather (src/eventweather.js), with the same sponsor line
 import { eventWeather, flyRoute, tourRoute, tourNotes } from './eventweather.js';

@@ -42,6 +42,50 @@ const RUN = field(4101, 400, MEGANS.map((s, i) => ({ name: 'Megan ' + s, pid: 'p
 RUN[5] = { ...RUN[5], handle: 'megan', goal: 9 * 3600, r: 0.42, r3: 0.6 };
 RUN[0] = { ...RUN[0], name: 'Lerato Fast', pace: 245, r3: 0.5, nearEnd: true }; // out front, 400 m from the finish: the feed hides where (hide the ends), as the real one does // Megan Naidoo: livedot.me/megan, going for a sub-9 (Bill Rowan)
 const RIDE = field(5203, 150, [{ name: 'Thandi Mokoena', pid: 'pfixthandi', handle: 'thandi', goal: 6.5 * 3600, photo: '/api/avatar/pfixthandi' }]);
+// the club and coach line (coach-line contract, 18 Oct): `team` on every rider view, as the apps' demo sets it (config/demo.listed);
+// a few with their club only, most with neither, and a private run with none (the servers send null on private, always)
+const T = {
+  prolend: { slug: 'prolend-cycling-club', name: 'ProLend Cycling Club', logo: 'https://windline.tech/img/sponsors/prolend.png', url: 'https://livedot.me/prolend-cycling-club#cycling' },
+  coast: { slug: 'demo', name: 'Coast Riders', url: 'https://livedot.me/demo#cycling', logo: null },
+  striders: { slug: 'durban-striders', name: 'Durban Striders', logo: null, url: 'https://livedot.me/durban-striders#running' },
+  fourways: { slug: 'fourways-striders', name: 'Fourways Striders', logo: null, url: 'https://livedot.me/fourways-striders#running' },
+  bay: { slug: 'bay-wheelers', name: 'Bay Wheelers', logo: null, url: 'https://livedot.me/bay-wheelers#cycling' },
+};
+RUN[5].team = { club: T.prolend, coach: { slug: 'coach-nadia-pillay', name: 'Coach Nadia Pillay', url: 'https://livedot.me/coach-nadia-pillay', demo: true } }; // Megan Naidoo
+RIDE[5].team = { club: T.coast, coach: { slug: 'coach-sipho-dlamini', name: 'Coach Sipho Dlamini', url: 'https://livedot.me/coach-sipho-dlamini', demo: true } }; // Thandi Mokoena
+[7, 20, 46, 59, 72, 85, 98].forEach((i) => { RUN[i].team = { club: T.striders, coach: null }; }); RUN[33].team = { club: T.fourways, coach: null }; // Durban Striders' map: one shows another club
+RUN[18].team = { club: T.fourways, coach: null }; RUN[44].team = { club: T.striders, coach: null }; // two more Megans, club only
+[9, 22, 35].forEach((i) => { RIDE[i].team = { club: T.bay, coach: null }; });
+// coaches (coach-line addition, 18 Oct): Coach Nadia Pillay (RunFast demo) coaches 8 runners in the Comrades demo, Megan Naidoo among
+// them, spread through the field; Coach Sipho Dlamini (Windline demo) 6 riders in the Coast Classic demo, Thandi among them. Plus
+// look-alikes for the pickers: a second Coach Nadia on RunFast (live in two races), a Coach Nadia Pillay on Windline (live in one),
+// a coach with no one racing (one public event coming up), and a second club of Striders on each app.
+const NADIA = { slug: 'coach-nadia-pillay', name: 'Coach Nadia Pillay', url: 'https://livedot.me/coach-nadia-pillay', demo: true };
+const SIPHO = { slug: 'coach-sipho-dlamini', name: 'Coach Sipho Dlamini', url: 'https://livedot.me/coach-sipho-dlamini', demo: true };
+const RFDEMO = { slug: 'demo', name: 'RunFast Demo Club', logo: null, url: 'https://livedot.me/demo#running' };
+const CDEMO = { id: 'comrades-demo', name: 'Comrades Marathon (demo)' }, WDEMO = { id: 'coast-demo', name: 'Coast Classic (demo)' };
+const pic = (n) => `https://runfast.tech/img/demo/a0${n}.png`;
+// RunFast's Comrades demo as its server sends it (coach-line, 8b98fd3): Coach Nadia Pillay's 8, by pid; ahead of and behind their goals,
+// one at the start line (km 0: no position), one finished (late in the demo's 6-hour loop)
+const NADIA_RUN = [['pdemo00megan', 'Megan Naidoo', 330, 28531, T.prolend], ['pdemo0000002', 'Pieter Naidoo', 290, 32400, RFDEMO], ['pdemo0000005', 'Sipho Fourie', 0, 30600, RFDEMO],
+  ['pdemo0000008', 'Thabo Khumalo', 300, 31500, RFDEMO], ['pdemo0000009', 'Naledi Fourie', 350, 28800, RFDEMO], ['pdemo0000011', 'Anika Khumalo', 310, 34200, RFDEMO],
+  ['pdemo0000014', 'Emma Smith', 360, 30000, null], ['pdemo0000017', 'Palesa Smith', 4e6, 39600, null]]
+  .map(([pid, name, pace, goal, club], i) => ({ pid, name, pace: pace || 280, done: !pace, goal, photo: pic(i + 1), r: 0.5, r2: 0.6, r3: 0.5, raceAs: CDEMO, team: { club, coach: NADIA } }));
+const SIPHO_RIDE = [{ ...RIDE[5], pid: 'pdemo0thandi', name: 'Thandi Mokoena (demo)', raceAs: WDEMO }, ...[2, 5, 9, 17, 40].map((n, i) => ({ ...RIDE[20 + i * 7], pid: 'pdemo00000' + String(n).padStart(2, '0'), raceAs: WDEMO, team: { club: n < 10 ? T.coast : null, coach: SIPHO } }))];
+const NADIA_B = { slug: 'coach-nadia-botha', name: 'Coach Nadia Botha', url: 'https://livedot.me/coach-nadia-botha' }, NADIA_W = { slug: 'nadia-pillay-cycling', name: 'Coach Nadia Pillay', url: 'https://livedot.me/nadia-pillay-cycling' };
+const HALF = { id: 'run-harbour-half', name: 'Harbour Half' };
+const BOTHA_RUN = [[110, null], [123, null], [136, HALF], [149, HALF]].map(([i, r]) => ({ ...RUN[i], r3: 0.5, ...(r ? { raceAs: r } : {}), team: { club: null, coach: NADIA_B } }));
+const NADIA_W_RIDE = [60, 73].map((i) => ({ ...RIDE[i], team: { club: null, coach: NADIA_W } }));
+const COACHES = { // the page search's coach pages (coach: true), each with its live feed (GET /api/live/coach/<slug>)
+  runfast: { 'coach-nadia-pillay': { c: NADIA, line: 'Comrades and ultra coaching, Durban.', logo: pic(2), area: { name: 'Durban', lat: -29.86, lon: 31.02, country: 'ZA' }, demo: true, people: NADIA_RUN },
+    'coach-nadia-botha': { c: NADIA_B, line: 'Road running, Johannesburg.', logo: null, area: { name: 'Johannesburg', lat: -26.2, lon: 28.05, country: 'ZA' }, people: BOTHA_RUN },
+    'coach-thabo-quiet': { c: { slug: 'coach-thabo-quiet', name: 'Coach Thabo Quiet', url: 'https://livedot.me/coach-thabo-quiet' }, line: 'Trail running, Cape Town.', logo: null, area: { name: 'Cape Town', lat: -33.92, lon: 18.42, country: 'ZA' }, people: [],
+      upcoming: [{ id: 'run-table-mountain', kind: 'race', name: 'Table Mountain Trail', url: 'https://runfast.tech/r/table-mountain', tz: 'Africa/Johannesburg', date: '2026-11-08', start: '2026-11-08T04:00:00.000Z', km: 21 }] } },
+  windline: { 'coach-sipho-dlamini': { c: SIPHO, line: 'Road cycling, San Francisco Bay.', logo: null, area: { name: 'San Francisco', lat: 37.77, lon: -122.42, country: 'US' }, demo: true, people: SIPHO_RIDE },
+    'nadia-pillay-cycling': { c: NADIA_W, line: 'Cycling coach, Cape Town.', logo: null, area: { name: 'Cape Town', lat: -33.92, lon: 18.42, country: 'ZA' }, people: NADIA_W_RIDE } },
+};
+const EXTRA = { runfast: [...NADIA_RUN, ...BOTHA_RUN], windline: [...SIPHO_RIDE, ...NADIA_W_RIDE] }; // where_is finds them by pid
+const PRIV = { ...RUN[60], pid: 'pfixprivate', name: 'Nomsa Private', private: true, team: null }; // on a private run (a follow link only): team null
 
 const gun = (now, hoursIn) => Math.floor((now - hoursIn * HOUR) / 6e4) * 6e4;
 /** A RunFast runner's Live, now. */
@@ -51,7 +95,7 @@ function runner(x, now) {
   let km = x.nearEnd ? CR.total - 0.4 : x.done ? CR.total : Math.min(CR.total, el / pace); if (status === 'stopped') km *= 0.7;
   const finished = km >= CR.total - 0.05; if (finished) status = 'finished';
   const ll = CR.at(km), fin = finished ? g + CR.total * pace * 1000 : g + (goal ? goal * 1000 + (el - km * goal / CR.total) * 1000 : CR.total * pace * 1000);
-  const v = { pid: x.pid, name: x.name, photo: x.photo || null, status, race: { id: 'comrades-preview', name: 'Comrades (preview)' }, run: null, km: +km.toFixed(3), total: +CR.total.toFixed(1), started: g, goal, tagline: null,
+  const v = { pid: x.pid, name: x.name, photo: x.photo || null, status, race: x.private ? { id: 'run-priv01', name: 'Sunday long run', private: true } : x.raceAs || { id: 'comrades-preview', name: 'Comrades (preview)' }, run: null, team: x.team || null, km: +km.toFixed(3), total: +CR.total.toFixed(1), started: g, goal, tagline: null,
     pace: status === 'live' ? pace : null, plan: { start: new Date(g).toISOString(), pace }, finish: status === 'stopped' ? null : fin, next: null,
     last: status === 'stopped' || km < 1 || CR.total - km < 1 ? null : { lat: ll[0], lon: ll[1], t: now - 20e3 }, line: [], seen: now - 20e3, // hidden near the start and finish
     ghost: goal ? (() => { const gk = Math.min(CR.total, el * CR.total / goal), p = CR.at(gk); return { lat: p[0], lon: p[1], km: +gk.toFixed(3), diff: Math.round(el - km * goal / CR.total) }; })() : null,
@@ -62,8 +106,8 @@ function runner(x, now) {
 function rider(x, now) {
   const g = gun(now, 4.2), speed = 22 + Math.round(x.r * 140) / 10, el = (now - g) / 1000, goal = x.goal || null;
   let status = x.r3 < 0.04 ? 'paused' : 'live'; const km = Math.min(CO.total, (el / 3600) * speed); if (km >= CO.total - 0.05) status = 'finished';
-  const ll = CO.at(km), ev = { id: 'coast-preview', name: 'Coast Classic (preview)', type: 'race', day: { id: coast.days[0].id, label: 'Coast Classic' }, tz: 'America/Los_Angeles' };
-  return { pid: x.pid, name: x.name, photo: x.photo || null, status, findable: true, event: ev, km: +km.toFixed(3), total: +CO.total.toFixed(3), speed: status === 'live' ? speed : null, started: g,
+  const ll = CO.at(km), ev = { id: 'coast-preview', name: 'Coast Classic (preview)', ...(x.raceAs || {}), type: 'race', day: { id: coast.days[0].id, label: 'Coast Classic' }, tz: 'America/Los_Angeles' };
+  return { pid: x.pid, name: x.name, photo: x.photo || null, status, findable: true, event: ev, team: x.team || null, km: +km.toFixed(3), total: +CO.total.toFixed(3), speed: status === 'live' ? speed : null, started: g,
     plan: { start: new Date(g).toISOString(), speed }, goal, tagline: null,
     ghost: goal ? (() => { const gk = Math.min(CO.total, el * CO.total / goal), p = CO.at(gk); return { lat: p[0], lon: p[1], km: +gk.toFixed(3), diff: Math.round(el - km * goal / CO.total) }; })() : null,
     finish: g + (goal ? goal * 1000 + (el - km * goal / CO.total) * 1000 : CO.total / speed * HOUR), taps: { on: true, open: true, count: Math.round(x.r2 * 80) },
@@ -142,9 +186,11 @@ function near(app, what, q, now) {
 }
 // clubs and their people on the club's live map (GET /api/live/club/<slug>: Findable members only, as the apps answer anyone)
 const CLUBS = {
-  runfast: { 'durban-striders': { name: 'Durban Striders', logo: 'https://runfast.tech/img/clubs/striders.png', colour: '#123A6B', members: () => [7, 20, 33, 46, 59, 72, 85, 98].map((i) => RUN[i]) },
+  runfast: { 'durban-striders': { name: 'Durban Striders', logo: 'https://runfast.tech/img/clubs/striders.png', colour: '#123A6B', area: { name: 'Durban', lat: -29.86, lon: 31.02, country: 'ZA' }, members: () => [7, 20, 33, 46, 59, 72, 85, 98].map((i) => RUN[i]) },
+    'fourways-striders': { name: 'Fourways Striders', logo: null, colour: '#7A2E0E', area: { name: 'Fourways', lat: -26.01, lon: 28.01, country: 'ZA' }, members: () => [162, 175].map((i) => RUN[i]) },
     'uct-running-club': { name: 'UCT Running Club', logo: 'https://evil.example/logo.png', colour: null, members: () => [111, 124, 137].map((i) => RUN[i]) } },
-  windline: { 'bay-wheelers': { name: 'Bay Wheelers', logo: null, colour: '#0B4F3C', members: () => [9, 22, 35, 48, 61].map((i) => RIDE[i]) } },
+  windline: { 'durban-striders-cc': { name: 'Durban Striders', logo: null, colour: '#123A6B', area: { name: 'Durban', lat: -29.86, lon: 31.02, country: 'ZA' }, members: () => [11, 24].map((i) => RIDE[i]) },
+    'bay-wheelers': { name: 'Bay Wheelers', logo: null, colour: '#0B4F3C', members: () => [9, 22, 35, 48, 61].map((i) => RIDE[i]) } },
 };
 function route(app, p, q, now) {
   let m;
@@ -153,8 +199,17 @@ function route(app, p, q, now) {
     const L = c.members().map((x) => (app === 'windline' ? rider(x, now) : runner(x, now))).sort((a, b) => b.km - a.km); return [200, { now, ...(app === 'windline' ? { club: { slug: m[1], name: c.name } } : {}), [app === 'windline' ? 'riders' : 'runners']: L }]; }
   if (p === '/profile' && (q.q || q.slug)) { // clubs (the apps' page search: every word the start of a word in the name)
     const cl = Object.entries(CLUBS[app]).filter(([slug, c]) => (q.slug ? slug === q.slug : hit(c.name + ' ' + slug, q.q))).map(([slug, c]) => ({ v: 1, slug, app, sport: app === 'windline' ? 'cycling' : 'running', type: 'club', name: c.name, logo: c.logo, colour: c.colour, url: `https://${app}.tech/c/${slug}`, members: 30, live: 0 }));
-    if (cl.length) return [200, { now, profiles: cl }];
+    const co = Object.entries(COACHES[app]).filter(([slug, x]) => (q.slug ? slug === q.slug : hit(x.c.name + ' ' + slug, q.q))).map(([slug, x]) => ({ v: 1, slug, app, sport: app === 'windline' ? 'cycling' : 'running', type: 'coach', coach: true, name: x.c.name, line: x.line, logo: x.logo, colour: null,
+      url: x.c.url, members: x.people.length, area: x.area, live: new Set(x.people.map((y) => (y.raceAs || {}).id || 'main')).size * (x.people.length ? 1 : 0), ...(x.demo ? { demo: true } : {}), events: { live: [], upcoming: x.upcoming || [], past: [] } }));
+    cl.forEach((c) => { const k = CLUBS[app][c.slug]; c.area = k.area || null; c.coach = false; });
+    if (cl.length || co.length) return [200, { now, profiles: [...cl, ...co] }];
   }
+  if ((m = p.match(/^\/live\/coach\/([a-z0-9-]+)$/))) { const x = COACHES[app][m[1]]; if (!x) return [404, { error: 'There’s no coach at this address.' }];
+    const L = x.people.map((y) => (app === 'windline' ? rider(y, now) : runner(y, now))).sort((a, b) => b.km - a.km), rOf = (v) => (app === 'windline' ? v.event : v.race);
+    const races = []; L.forEach((v) => { const r = rOf(v), e = races.find((z) => z.id === r.id); if (e) e.count++; else races.push({ id: r.id, name: r.name, count: 1 }); }); races.sort((a, b) => b.count - a.count);
+    const key = app === 'windline' ? 'riders' : 'runners';
+    if (q.race) { const r = races.find((z) => z.id === q.race); if (!r) return [404, { error: 'There’s no race at this address.' }]; return [200, { now, coach: x.c, race: { id: r.id, name: r.name }, [key]: L.filter((v) => rOf(v).id === r.id) }]; }
+    return [200, { now, coach: x.c, races, ...(races.length === 1 ? { race: { id: races[0].id, name: races[0].name }, [key]: L } : {}) }]; }
   if (app === 'windline' && p === '/event/find') { // Windline's tourfind.js, stood in for: a tour's name words and its page's name; a word in no tour counts against none
     const ws = (t) => words(String(t).replace(/['\u2019]s\b/g, '')).filter((w) => !['the', 'a', 'of', 'tour', 'tours', 's', 'where', 'is'].includes(w)), qw = ws(q.q || '');
     const sc = Object.entries(TOURS).map(([slug, t]) => { const nw = ws(t.name), bw = ws(t.pageName || ''), inName = qw.filter((w) => nw.some((y) => y.startsWith(w))).length; return { slug, t, inName, n: inName + qw.filter((w) => !nw.some((y) => y.startsWith(w)) && bw.some((y) => y.startsWith(w))).length }; }).filter((x) => x.inName);
@@ -171,20 +226,20 @@ function route(app, p, q, now) {
   const people = app === 'windline' ? RIDE : RUN, live = (x) => (app === 'windline' ? rider(x, now) : runner(x, now)), key = app === 'windline' ? 'riders' : 'runners', rid = app === 'windline' ? 'coast-preview' : 'comrades-preview';
   if (p === '/live/find' && app === 'windline' && /boom/i.test(String(q.q || ''))) return [503, { error: 'Briefly unavailable.' }]; // a server that fails (livedot misses)
   if (p === '/live/find') { const t = String(q.q || ''); if (t.replace(/[^A-Za-z]/g, '').length < 3) return [400, { error: 'Type at least 3 letters.' }];
-    const L = people.filter((x) => hit(x.name, t)).slice(0, 20).map(live); return [200, { now, [key]: app === 'windline' ? L : L.map((v) => ({ pid: v.pid, name: v.name, photo: null, race: { id: 'comrades-preview', name: v.race.name, kind: 'race' }, live: ['live', 'paused', 'delayed', 'nosignal'].includes(v.status) })) }]; }
-  if ((m = p.match(/^\/live\/(rider|runner)$/))) { const ids = String(q.pids || '').split(','); return [200, { now, [key]: people.filter((x) => ids.includes(x.pid)).map(live) }]; }
+    const L = people.filter((x) => hit(x.name, t)).slice(0, 20).map(live); return [200, { now, [key]: app === 'windline' ? L : L.map((v) => ({ pid: v.pid, name: v.name, photo: null, race: { id: 'comrades-preview', name: v.race.name, kind: 'race' }, live: ['live', 'paused', 'delayed', 'nosignal'].includes(v.status), team: v.team })) }]; }
+  if ((m = p.match(/^\/live\/(rider|runner)$/))) { const ids = String(q.pids || '').split(','); const pool = new Map([...people, ...EXTRA[app]].map((x) => [x.pid, x])); return [200, { now, [key]: [...pool.values()].filter((x) => ids.includes(x.pid)).map(live) }]; }
   if ((m = p.match(/^\/live\/race\/([\w-]+)$/))) { if (m[1] !== rid) return [404, { error: 'There’s no race at this address.' }];
     const t = String(q.q || ''), all = people.map(live).sort((a, b) => b.km - a.km);
     return [200, { now, count: people.length, ...(t ? {} : { taps: { total: 4242, day: null } }), [key]: t.replace(/[^A-Za-z]/g, '').length >= 3 ? all.filter((v) => hit(v.name, t)).slice(0, 20) : all.slice(0, 50) }]; }
   if ((m = p.match(/^\/race\/([\w-]+)$/))) { if (m[1] !== rid) return [404, { error: 'There’s no race at this address.' }];
     return [200, app === 'windline' ? { ...coast, id: rid, name: 'Coast Classic (preview)', start: new Date(gun(now, 4.2)).toISOString() } : { ...comrades, id: rid, name: 'Comrades (preview)', start: new Date(gun(now, 6.1)).toISOString() }]; }
   if ((m = p.match(/^\/live\/h\/([\w-]+)$/))) { const x = people.find((y) => y.handle === m[1]); return x ? [200, { now, handle: x.handle, [key]: [live(x)] }] : [404, { error: 'They may have changed or released it.' }]; }
-  if ((m = p.match(/^\/live\/f\/(\w+)$/))) { const x = m[1] === 'demo' ? people[5] : null; return x ? [200, { now, [key]: [live(x)] }] : [404, { error: 'That link has been reset.' }]; }
+  if ((m = p.match(/^\/live\/f\/(\w+)$/))) { const x = m[1] === 'demo' ? people[5] : m[1] === 'priv01' && app === 'runfast' ? PRIV : null; return x ? [200, { now, [key]: [live(x)] }] : [404, { error: 'That link has been reset.' }]; }
   if (app === 'windline' && (m = p.match(/^\/handle\/([\w-]+)$/))) {
     const r = RUN.find((y) => y.handle === m[1]), w = RIDE.find((y) => y.handle === m[1]), x = r || w, a = r ? 'runfast' : 'windline';
     if (!x) return [200, { now, handle: null, state: 'unknown' }];
     const v = r ? runner(r, now) : rider(w, now), nm = x.name.split(' ')[0] + ' ' + x.name.split(' ').pop()[0] + '.';
-    return [200, { now, v: 1, handle: x.handle, url: 'https://livedot.me/' + x.handle, index: true, person: { name: nm, photo: null }, apps: [a], state: 'live',
+    return [200, { now, v: 1, handle: x.handle, url: 'https://livedot.me/' + x.handle, index: true, person: { name: nm, photo: null, team: x.team || null }, apps: [a], state: 'live',
       live: [{ app: a, sport: r ? 'running' : 'cycling', race: v.race ? v.race.name : v.event.name, day: null, status: v.status, km: v.km, total: v.total, tz: r ? 'Africa/Johannesburg' : 'America/Los_Angeles', seen: v.seen, url: 'https://livedot.me/' + x.handle }], upcoming: [], follow: { [a]: true } }];
   }
   if (p === '/profile') {

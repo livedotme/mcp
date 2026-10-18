@@ -160,6 +160,15 @@ ul.near{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .skmsg{margin:0;padding:0 18px 16px;color:var(--muted);font-size:13px;min-height:18px}
 .errc .hint{padding:14px 18px 4px}.errc .ft{border-top:0}
 @media (prefers-reduced-motion:reduce){.sk:after{animation:none;display:none}.spin{animation-duration:2s}.fadein{animation:none}.dot,.pill.live i{animation:none}}
+/* the club and coach line (18 Oct): one line under the name, 13px muted, never wraps; the club gives way first */
+.ttl .tm,.tm{display:flex;align-items:center;gap:6px;min-width:0;margin-top:3px;color:var(--muted);font:500 13px/1.3 var(--font);white-space:nowrap;overflow:hidden}
+.tm button{all:unset;box-sizing:border-box;cursor:pointer;display:inline-flex;align-items:center;gap:5px;min-width:0;color:inherit}
+.tm button:hover .tn{color:var(--ink);text-decoration:underline}.tm button:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:4px}
+.tm .tc{flex:0 1 auto}.tm .tk{flex:0 0 auto;max-width:58%}
+.ttl .tm .tn,.tm .tn{display:block;min-width:0;color:inherit;font-size:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm img{width:16px;height:16px;border-radius:4px;object-fit:contain;background:#fff;flex:none;box-shadow:0 0 0 1px var(--line)}
+.tm svg{flex:none;width:12px;height:12px}.ttl .tm .tsep,.tm .tsep{display:inline;flex:none;color:var(--faint)}
+.mem .cl{display:block;max-width:100%;color:var(--muted);font-size:11.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:420px){.map{height:240px}.ttl b{font-size:16px}.stat{padding:10px 12px}}
 </style>
 </head>
@@ -189,8 +198,18 @@ function initialsOf(n) { return String(n || '').replace(/\(.*?\)/g, '').replace(
 /** An app's picture through livedot.me/p/photo, which says it may be embedded (ChatGPT's sandbox loads a cross-origin image only then). */
 var PICS = /^https:\/\/(windline\.tech|runfast\.tech|firebasestorage\.googleapis\.com|storage\.googleapis\.com)\//;
 function pic(u) { return 'https://livedot.me/p/photo?u=' + encodeURIComponent(u); }
+/** Their club and coach, one line under the name (coach-line contract, 18 Oct): [logo] Club · [whistle] Coach, each a link to its page.
+ *  "Coached by" (and "(demo)") only in the label, never in the line. */
+var WHISTLE = '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="10" r="3.6"/><path d="M8.6 7.4 14.5 6v3l-5 1.6"/><path d="M4.2 4.2 5.6 6"/></svg>';
+var PAGE = /^https:\/\/(livedot\.me|windline\.tech|runfast\.tech)\//;
+function teamLine(t) {
+  var c = t && t.club && t.club.name ? t.club : null, k = t && t.coach && t.coach.name ? t.coach : null; if (!c && !k) return '';
+  var part = function (cls, x, inner, label) { var u = PAGE.test(String(x.url || '')) ? x.url : null; return '<button type="button" class="' + cls + '"' + (u ? ' data-open="' + esc(u) + '"' : ' disabled') + ' title="' + esc(label) + '" aria-label="' + esc(label) + '">' + inner + '<span class="tn">' + esc(x.name) + '</span></button>'; };
+  return '<span class="tm">' + (c ? part('tc', c, c.logo && PICS.test(c.logo) ? '<img crossorigin="anonymous" src="' + esc(pic(c.logo)) + '" alt="" width="16" height="16" loading="lazy" referrerpolicy="no-referrer">' : '', c.name) : '')
+    + (c && k ? '<span class="tsep" aria-hidden="true">·</span>' : '') + (k ? part('tk', k, WHISTLE, 'Coached by ' + k.name + (k.demo ? ' (demo)' : '')) : '') + '</span>';
+}
 function avatarOf(name, photo, bg, inner) {
-  return '<span class="av"' + (bg ? ' style="background:' + bg + '"' : '') + '>' + esc(inner != null ? inner : initialsOf(name)) + (photo && /^https:\/\/(windline|runfast)\.tech\//.test(photo) ? '<img crossorigin="anonymous" src="' + esc(pic(photo)) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
+  return '<span class="av"' + (bg ? ' style="background:' + bg + '"' : '') + '>' + esc(inner != null ? inner : initialsOf(name)) + (photo && PICS.test(photo) ? '<img crossorigin="anonymous" src="' + esc(pic(photo)) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' : '') + '</span>';
 }
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
 var MARK = '<svg class="mark" viewBox="20 20 60 60" aria-hidden="true"><circle cx="50" cy="50" r="26" fill="none" stroke="#2FD39B" stroke-width="5" stroke-linecap="round" stroke-dasharray="128 35.4" transform="rotate(-20 50 50)" opacity=".55"/><circle cx="50" cy="50" r="13" fill="#2FD39B"/></svg>';
@@ -291,14 +310,14 @@ function noneView(v) {
   root.innerHTML = '<div class="card">' + head('livedot', '', '', STACK.length > 0, null) + '<p class="hint" id="lv-none">' + esc(v.message || 'Nothing to show here.').replace(/\n/g, '<br>') + '</p><span class="sp">' + sponsorHtml(v) + '</span></div>';
   seps(root); wire(); host.size();
 }
-function head(title, sub, pill, back, photo) {
-  return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : '') + (photo != null ? avatarOf(title, photo) : back ? '' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b><span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
+function head(title, sub, pill, back, photo, under) {
+  return '<div class="hd">' + (back ? '<button class="back" type="button" data-back aria-label="Back to the list">' + BACK + '</button>' : '') + (photo != null ? avatarOf(title, photo) : back ? '' : MARK) + '<div class="ttl"><b>' + esc(title) + '</b>' + (under || '') + '<span>' + esc(sub || '') + '</span></div>' + (pill || '') + '</div>';
 }
 var pillOf = function (v) { var live = /^(Live|No signal|Forecast)$/.test(v.statusWord); return '<span class="pill' + (live ? ' live' : '') + '">' + (live ? '<i></i>' : '') + esc(v.statusWord || '') + '</span>'; };
 
 function mapView(v) {
   var back = STACK.length > 0, branded = v.kind === 'person' || v.kind === 'event';
-  var h = '<div class="card">' + (branded ? brandBar(v) : '') + head(v.name, v.kind === 'event' ? v.headline : v.race, pillOf(v), back, v.kind === 'person' ? (v.photo || '') : null);
+  var h = '<div class="card">' + (branded ? brandBar(v) : '') + head(v.name, v.kind === 'event' ? v.headline : v.race, pillOf(v), back, v.kind === 'person' ? (v.photo || '') : null, v.kind === 'person' ? teamLine(v.team) : '');
   var fly = v.kind === 'fly';
   h += '<div class="map' + (fly ? ' fly' : '') + '" id="map"><svg id="svg" aria-hidden="true"></svg><div id="gl"></div>'
     + (fly ? '<div class="hud" id="hud"><b class="num">' + esc(v.headline || '') + '</b><span id="hudw">' + esc(v.race || '') + '</span></div><div class="ctl"><button type="button" id="play">Play</button><button type="button" id="whole">Whole route</button></div>' : '')
@@ -349,10 +368,11 @@ function clubMark(c, v) {
 }
 function teamHtml(v) {
   return (v.members || []).map(function (m) {
+    var cl = m.team && m.team.club && m.team.club.name && !(v.club && v.club.slug && m.team.club.slug === v.club.slug) ? m.team.club.name : ''; // another club than the card's (no room for a coach)
     var nm = String(m.name || ''), sp = nm.indexOf(' '), first = sp > 0 ? nm.slice(0, sp) : nm, last = sp > 0 ? nm.slice(sp + 1) : '';
     var sub = esc(m.sub || '').replace(/ · ([+−])([\d:]+)/, function (x, sg, t) { return ' · <span class="' + (sg === '+' ? 'w' : 'g') + '">' + sg + t + '</span>'; }).replace(/ · On pace/, ' · <span class="g">On pace</span>');
-    return '<button type="button" class="mem' + (/^(live|delayed)$/.test(m.status) ? ' live' : '') + '" data-pid="' + esc(m.id) + '" aria-label="' + esc(nm + ', ' + (m.sub || '')) + '">' + avatarOf(nm, m.photo, v.sport === 'run' ? 'var(--run)' : 'var(--cyc)')
-      + '<b>' + esc(first) + '</b><span class="ln">' + esc(last || ' ') + '</span><span class="km num">' + sub + '</span></button>';
+    return '<button type="button" class="mem' + (/^(live|delayed)$/.test(m.status) ? ' live' : '') + '" data-pid="' + esc(m.id) + '" aria-label="' + esc(nm + ', ' + (m.sub || '') + (cl ? ', ' + cl : '')) + '">' + avatarOf(nm, m.photo, v.sport === 'run' ? 'var(--run)' : 'var(--cyc)')
+      + '<b>' + esc(first) + '</b><span class="ln">' + esc(last || ' ') + '</span><span class="km num">' + sub + '</span>' + (cl ? '<span class="cl">' + esc(cl) + '</span>' : '') + '</button>';
   }).join('');
 }
 function clubView(v) {
@@ -361,7 +381,7 @@ function clubView(v) {
     + '<div class="ttl cttl"><b>' + esc(v.name) + '</b><span id="lv-sub">' + esc(v.subtitle || '') + '</span></div>' + pillOf(v) + '</div>';
   h += '<div class="map clubmap" id="map"><svg id="svg" aria-hidden="true"></svg><div id="gl"></div>' + (v.headline ? '<div class="headline num" id="lv-head">' + headHtml(v) + '</div>' : '') + '</div>';
   if (v.stats && v.stats.length) h += '<div class="stats" id="lv-stats">' + statsHtml(v) + '</div>';
-  h += '<div class="sec"><h3>' + (v.sport === 'run' ? 'Our runners' : 'Our riders') + '<span class="cnt">Tap one to see them</span></h3></div><div class="team" id="lv-team">' + teamHtml(v) + '</div>';
+  h += '<div class="sec"><h3>' + esc(v.teamTitle || (v.sport === 'run' ? 'Our runners' : 'Our riders')) + '<span class="cnt">Tap one to see them</span></h3></div><div class="team" id="lv-team">' + teamHtml(v) + '</div>';
   h += '<div class="ft">' + (v.tap ? '<button class="btn tapbtn appbtn" type="button" id="tap">' + esc(v.tap.label) + '</button>' : '') + (v.follow ? '<button class="btn' + (v.tap ? ' sec2' : ' appbtn') + '" type="button" id="follow" data-open="' + esc(v.follow.url) + '">' + (v.tap ? '' : '<i></i>') + esc(v.follow.label) + '</button>' : '') + '<span class="meta" id="lv-meta">' + metaHtml(v) + '</span></div>';
   if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>';
   h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
@@ -417,15 +437,16 @@ function updateLive(nv) {
 
 function picker(v) {
   var h = '<div class="card">' + head(v.title, v.subtitle, '<span class="pill">' + esc(v.total) + '</span>');
-  h += '<div class="find"><label class="box">' + SEARCH + '<input id="q" type="search" autocomplete="off" placeholder="Narrow by surname or initial" aria-label="Narrow by surname or initial"><kbd>Enter</kbd></label></div>';
-  h += '<ul class="rows" id="rows"></ul><p class="hint" id="hint">' + (v.rows.length < 20 ? 'Tap the person you mean.' : 'The ' + v.rows.length + ' most likely. Type a surname or initial to narrow it down.') + '</p>';
+  var nw = v.pick ? 'Narrow by name' : 'Narrow by surname or initial';
+  h += '<div class="find"><label class="box">' + SEARCH + '<input id="q" type="search" autocomplete="off" placeholder="' + nw + '" aria-label="' + nw + '">' + (v.pick ? '' : '<kbd>Enter</kbd>') + '</label></div>';
+  h += '<ul class="rows" id="rows"></ul><p class="hint" id="hint">' + (v.pick ? 'Tap the one you mean.' : v.rows.length < 20 ? 'Tap the person you mean.' : 'The ' + v.rows.length + ' most likely. Type a surname or initial to narrow it down.') + '</p>';
   if (v.cta) h += '<button type="button" class="cta" data-open="' + esc(v.cta.url) + '">' + esc(v.cta.label) + ' <span aria-hidden="true">→</span></button>'; // only without a sign-in: a free account, one line
   h += '<span class="sp">' + sponsorHtml(v) + '</span></div>';
   root.innerHTML = h; seps(root); rows(v.rows); wire();
   var q = document.getElementById('q'), t = 0;
   q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(function () { var s = q.value.trim().toLowerCase(); rows(v.rows.filter(function (r) { return !s || r.name.toLowerCase().split(/\s+/).some(function (w) { return w.indexOf(s) === 0; }); })); }, 80); });
   q.addEventListener('keydown', function (e) {
-    if (e.key !== 'Enter') return; e.preventDefault(); var s = q.value.trim(); if (!s) return;
+    if (e.key !== 'Enter') return; e.preventDefault(); var s = q.value.trim(); if (!s || v.pick) return; // a team picker narrows as you type
     var box = document.getElementById('rows'); box.innerHTML = '<li class="empty"><span class="spin" aria-hidden="true"></span> Searching…</li>';
     host.call('find_person', { name_or_handle: v.query, event: v.event || undefined, surname: s, units: v.units }).then(function (r) { var nv = viewOf(r); if (nv && nv.kind === 'picker') show(nv); else if (nv && nv.kind !== 'none') { STACK.push(v); show(nv); } else box.innerHTML = '<li class="empty">No one by that name. Try another spelling.</li>'; })
       .catch(function () { box.innerHTML = '<li class="empty">That didn’t load. Try again.</li>'; });
@@ -454,8 +475,9 @@ function rows(list) {
   var box = document.getElementById('rows');
   if (!list.length) { box.innerHTML = '<li class="empty">No one here by that name. Press Enter to search the whole race.</li>'; host.size(); return; }
   box.innerHTML = list.map(function (r) {
-    var ini = r.name.replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2), sub = [r.where, r.pace, r.goal, r.extra].filter(Boolean).join(' · ') || (r.race || ''), live = /^(live|delayed|nosignal)$/.test(r.status);
-    return '<li><button class="row" type="button" data-id="' + esc(r.id) + '">' + avatarOf(r.name, r.photo, r.sport === 'running' ? 'var(--run)' : 'var(--cyc)', ini) + '<span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
+    var ini = r.name.replace(/\(.*?\)/g, '').replace(/\./g, '').trim().split(/\s+/).map(function (w) { return w[0]; }).join('').slice(0, 2), sub = ([r.where, r.pace, r.goal, r.extra].filter(Boolean).join(' · ') || (r.race || '')) + (r.team && r.team.club && r.team.club.name ? ' · ' + r.team.club.name : ''), live = /^(live|delayed|nosignal)$/.test(r.status) || r.live === true;
+    if (r.sub != null) sub = r.sub; // a club, coach or race row: where, the sport and app, how many of theirs are live
+    return '<li><button class="row" type="button" data-id="' + esc(r.id) + '" data-i="' + V.rows.indexOf(r) + '">' + avatarOf(r.name, r.photo, r.sport === 'running' ? 'var(--run)' : 'var(--cyc)', ini) + '<span class="mid"><b>' + esc(r.name) + (/^h:/.test(r.id) ? '<span class="tag">livedot.me/' + esc(r.id.slice(2)) + '</span>' : '') + '</b><span class="sub num">' + esc(sub) + '</span></span>'
       + (live ? '<span class="pill live"><i></i>Live</span>' : r.status ? '<span class="pill">' + esc({ paused: 'Paused', stopped: 'Stopped', finished: 'Finished', waiting: 'Not started' }[r.status] || r.status) + '</span>' : '') + CHEV + '</button></li>';
   }).join('');
   seps(box); wireImgs(box);
@@ -466,25 +488,25 @@ function rows(list) {
 var TAP_AT = {};
 function wireTap() {
   var b = document.getElementById('tap'), t = V && V.tap; if (!b || !t) return;
-  var wait = function (ms, n) { b.disabled = true; b.textContent = n ? 'Taps sent ✓ (' + n + ')' : t.club ? 'Taps sent ✓' : 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
-  var key = t.tour || t.club || t.person, since = Date.now() - (TAP_AT[key] || 0); if (since < 60e3) wait(60e3 - since);
+  var wait = function (ms, n) { b.disabled = true; b.textContent = n ? 'Taps sent ✓ (' + n + ')' : t.club || t.coach ? 'Taps sent ✓' : 'Tap sent ✓'; setTimeout(function () { if (document.body.contains(b)) { b.disabled = false; b.textContent = t.label; } }, ms); };
+  var key = t.tour || t.coach || t.club || t.person, since = Date.now() - (TAP_AT[key] || 0); if (since < 60e3) wait(60e3 - since);
   b.addEventListener('click', function () {
     if (b.disabled) return; b.disabled = true; b.innerHTML = '<span class="spin" aria-hidden="true"></span>Sending…';
     var old = b.parentNode.querySelector('.tapwhy'); if (old) old.remove();
     var say = function (msg) { var p = document.createElement('p'); p.className = 'tapwhy'; p.textContent = msg; b.parentNode.appendChild(p); host.size(); };
-    host.call('tap_on_the_back', t.tour ? { tour: t.tour } : t.club ? { club: t.club, event: t.event } : { person: t.person }).then(function (r) {
+    host.call('tap_on_the_back', t.tour ? { tour: t.tour } : t.coach ? { coach: t.coach, event: t.event } : t.club ? { club: t.club, event: t.event } : { person: t.person }).then(function (r) {
       var sc = r && r.structuredContent;
       if (sc && sc.sent) { TAP_AT[key] = Date.now(); wait(60e3, sc.taps_sent || 0); return; }
       b.disabled = false; b.textContent = t.label; say((sc && (sc.message || sc.error)) || 'The tap didn’t go through. Try again in a moment.');
     }).catch(function () {
       if (host.canCall()) { b.disabled = false; b.textContent = t.label; say('The tap didn’t go through. Try again in a moment.'); return; } // a host that calls tools never also gets a message
-      host.message(t.tour ? 'Give the tour a tap on the back' : t.club ? 'Give the team a tap on the back' : (t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[key] = Date.now(); wait(60e3); })
+      host.message(t.tour ? 'Give the tour a tap on the back' : t.club || t.coach ? 'Give the team a tap on the back' : (t.finished ? 'Congratulate ' : 'Give ') + t.first + (t.finished ? '' : ' a tap on the back')).then(function () { TAP_AT[key] = Date.now(); wait(60e3); })
         .catch(function () { b.disabled = false; b.textContent = t.label; say(t.tour ? 'Ask in the chat: “Give the tour a tap on the back”.' : t.club ? 'Ask in the chat: “Give the team a tap on the back”.' : 'Ask in the chat: “Give ' + t.first + ' a tap on the back”.'); });
     });
   });
 }
 function wireOpen(el) { if (el) el.querySelectorAll('[data-open]').forEach(function (b) { b.addEventListener('click', function () { host.open(b.getAttribute('data-open')); }); }); }
-function wireImgs(el) { (el || root).querySelectorAll('.av img').forEach(function (i) { i.addEventListener('error', function () { i.remove(); }); if (i.complete && !i.naturalWidth) i.remove(); }); } // a picture that won't load: the initials underneath
+function wireImgs(el) { (el || root).querySelectorAll('.av img, .tm img').forEach(function (i) { i.addEventListener('error', function () { i.remove(); }); if (i.complete && !i.naturalWidth) i.remove(); }); } // a picture that won't load: the initials underneath
 function wire() {
   wireImgs(root);
   wireTap();
@@ -493,6 +515,8 @@ function wire() {
   var box = document.getElementById('rows');
   if (box && V && V.kind === 'picker') box.addEventListener('click', function (e) {
     var b = e.target.closest('[data-id]'); if (!b || b.classList.contains('busy')) return;
+    var r = V.pick ? V.rows[+b.getAttribute('data-i')] : null; // a club, coach or race picker: its team card, in this card too
+    if (r && r.call) return act({ el: b, tool: r.call.tool, args: r.call.args, kind: 'club' });
     act({ el: b, tool: 'where_is', args: { person: b.getAttribute('data-id'), units: V.units }, kind: 'person' }); // the person, in this card (never a chat message)
   });
 }
