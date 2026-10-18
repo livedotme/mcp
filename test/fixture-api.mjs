@@ -238,7 +238,7 @@ function route(app, p, q, now) {
   if (app === 'windline' && (m = p.match(/^\/handle\/([\w-]+)$/))) {
     const r = RUN.find((y) => y.handle === m[1]), w = RIDE.find((y) => y.handle === m[1]), x = r || w, a = r ? 'runfast' : 'windline';
     if (!x) return [200, { now, handle: null, state: 'unknown' }];
-    const v = r ? runner(r, now) : rider(w, now), nm = x.name.split(' ')[0] + ' ' + x.name.split(' ').pop()[0] + '.';
+    const v = r ? runner(r, now) : rider(w, now), nm = x.name; // their own page: their full name (Wes, 18 Oct)
     return [200, { now, v: 1, handle: x.handle, url: 'https://livedot.me/' + x.handle, index: true, person: { name: nm, photo: null, team: x.team || null }, apps: [a], state: 'live',
       live: [{ app: a, sport: r ? 'running' : 'cycling', race: v.race ? v.race.name : v.event.name, day: null, status: v.status, km: v.km, total: v.total, tz: r ? 'Africa/Johannesburg' : 'America/Los_Angeles', seen: v.seen, url: 'https://livedot.me/' + x.handle }], upcoming: [], follow: { [a]: true } }];
   }

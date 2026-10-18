@@ -241,9 +241,9 @@ async function resolve(ctx, args) {
     }
     for (const x of running) {
       const r = await R.liveByHandle(x.app, b.handle), v = listOf(r.body)[0];
-      if (v) return { p: norm(x.app, v), via: { handle: b.handle } };
+      if (v) return { p: { ...norm(x.app, v), found: true, name: nm }, via: { handle: b.handle } }; // their own livedot page: their full name, as the page shows it (Wes, 18 Oct)
     }
-    return { text: `${nm} is racing, but I can't share where they are right now. Their livedot page: ${SITE.livedot}/${b.handle}` };
+    return { text: `${nm} is live, but I can't share where they are right now. Their livedot page: ${SITE.livedot}/${b.handle}` };
   }
   if (code) {
     if (!/^[A-Za-z0-9]{4,16}$/.test(code)) return { text: 'That isn\'t a follow link.' };

@@ -60,12 +60,12 @@ try {
   await test('an exact handle answers at once (livedot.me/megan), weather from the engine', async () => {
     const r = await call('find_person', { name_or_handle: 'megan', event: 'Comrades' });
     const s = r.structuredContent, t = r.content[0].text;
-    assert.equal(s.view, 'person'); assert.equal(s.name, 'Megan N.'); assert.equal(s.follow_url, 'https://livedot.me/megan');
+    assert.equal(s.view, 'person'); assert.equal(s.name, 'Megan Naidoo'); assert.equal(s.follow_url, 'https://livedot.me/megan');
     assert.ok(s.position && s.position.km > 0); assert.ok(s.goal); assert.ok(s.eta); assert.match(t, SPONSOR); assert.match(t, /km \d+ \(mile \d+\)/);
     assert.ok(s.conditions, 'no conditions: the forecast store didn\'t answer'); assert.ok(s.ahead && s.ahead.length); assert.ok(s.road_ahead);
     assert.match(t, /other people match "megan"/);
     const v = r._meta['livedot/view']; assert.equal(v.kind, 'person'); assert.ok(v.course.length > 100); assert.ok(v.dot); assert.ok(v.stops && v.stops.length);
-    assert.ok(!/Naidoo/.test(JSON.stringify(r)), 'a surname leaked');
+    assert.equal((r.content[0].text.match(/Naidoo/g) || []).length, 1, 'the full name once, as their livedot page shows it (Wes, 18 Oct)');
   });
   await test('many Megans: the top 5 and the total, a picker, a question, never a guess', async () => {
     const r = await call('find_person', { name_or_handle: 'Megan', event: 'the Comrades preview' }), s = r.structuredContent;
@@ -92,11 +92,11 @@ try {
   });
   await test('the club and coach line (18 Oct): one clause after the name, the structured team, the card\'s team; never "(demo)"', async () => {
     const r = await call('where_is', { handle: 'megan' }), s = r.structuredContent, t = r.content[0].text, v = r._meta['livedot/view'];
-    assert.match(t, /^Megan N\. \(ProLend Cycling Club, coached by Coach Nadia Pillay\) is at km \d+/); assert.equal((t.match(/coached by/g) || []).length, 1, 'once');
+    assert.match(t, /^Megan Naidoo \(ProLend Cycling Club, coached by Coach Nadia Pillay\) is at km \d+/); assert.equal((t.match(/coached by/g) || []).length, 1, 'once');
     assert.ok(!/\(demo\)|demo\)/.test(t), 'never "(demo)" in the words');
     assert.deepEqual(s.team, { club: { slug: 'prolend-cycling-club', name: 'ProLend Cycling Club', logo: 'https://windline.tech/img/sponsors/prolend.png', url: 'https://livedot.me/prolend-cycling-club#cycling' },
       coach: { slug: 'coach-nadia-pillay', name: 'Coach Nadia Pillay', url: 'https://livedot.me/coach-nadia-pillay', demo: true } });
-    assert.deepEqual(v.team, s.team); assert.ok(!/Naidoo/.test(JSON.stringify(r)), 'only the pages\' names: no surname rides along');
+    assert.deepEqual(v.team, s.team); assert.ok(!/Naidoo/.test(JSON.stringify(s.team)), 'the team carries only the pages\' names');
     const c = await call('club_in_race', { club: 'Durban Striders', event: 'Comrades' }), ms = c.structuredContent.members;
     assert.ok(ms.length >= 6 && ms.every((m) => m.team && m.team.club && !m.team.coach)); assert.ok(ms.some((m) => m.team.club.slug === 'fourways-striders'));
     const one = await call('where_is', { person: ms.find((m) => m.team.club.slug === 'durban-striders').id }), ot = one.content[0].text;
@@ -469,13 +469,13 @@ try {
     assert.equal(missOf('event_status', { event: 'Coast' }, { structured: { view: 'none', races: [{ name: 'A' }, { name: 'B' }] } }, [{ app: 'windline', status: 200 }]), null, 'a list to choose from is not a miss');
   });
   // ---- full names and photos for Findable people; a tap button on the card (Wes, 17 Oct)
-  await test('Findable people: full name and their own photo (from the apps’ hosts only); a handle or link alone: first name and initial, no photo', async () => {
+  await test('Findable people: full name and their own photo (from the apps’ hosts only); a handle: their full name, as their livedot page shows it (Wes, 18 Oct)', async () => {
     const b = await call('find_person', { name_or_handle: 'Megan', event: 'Comrades', surname: 'Bot' }), S = b.structuredContent, v = b._meta['livedot/view'];
     assert.equal(S.name, 'Megan Botha'); assert.equal(S.photo, 'https://runfast.tech/img/demo/a01.png'); assert.equal(v.photo, S.photo); assert.match(b.content[0].text, /^Megan Botha /);
     const pk = (await call('find_person', { name_or_handle: 'Megan', event: 'the Comrades preview' }))._meta['livedot/view'].rows;
     const sm = pk.find((x) => x.name === 'Megan Smith'), bo = pk.find((x) => x.name === 'Megan Botha'); if (sm) assert.equal(sm.photo, null, 'a photo from a host that isn’t the app’s: never'); if (bo) assert.equal(bo.photo, 'https://runfast.tech/img/demo/a01.png');
     const t = await call('where_is', { handle: 'livedot.me/thandi' }); assert.equal(t.structuredContent.name, 'Thandi Mokoena'); assert.equal(t.structuredContent.photo, 'https://windline.tech/api/avatar/pfixthandi');
-    const h = await call('where_is', { handle: 'megan' }); assert.equal(h.structuredContent.name, 'Megan N.'); assert.equal(h.structuredContent.photo, null);
+    const h = await call('where_is', { handle: 'megan' }); assert.equal(h.structuredContent.name, 'Megan Naidoo');
     const ev = await call('event_status', { event: 'Comrades' }); assert.ok(ev.structuredContent.leaders.every((x) => 'photo' in x));
     const csp = (await post({ jsonrpc: '2.0', id: ++n, method: 'resources/read', params: { uri: 'ui://livedot/live-map.html' } })).body.result.contents[0]._meta;
     for (const d of ['https://windline.tech', 'https://runfast.tech']) { assert.ok(csp.ui.csp.resourceDomains.includes(d)); assert.ok(csp['openai/widgetCSP'].resource_domains.includes(d)); }
